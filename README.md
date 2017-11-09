@@ -1,4 +1,4 @@
-# BitsnBolts\Flysystem\Sharepoint [BETA]
+# BitsnBolts\Flysystem\Sharepoint [ALPHA]
 
 This is a Flysystem adapter for Sharepoint.
 
