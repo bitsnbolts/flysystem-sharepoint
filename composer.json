@@ -1,0 +1,33 @@
+{
+    "name": "thijsvdanker/flysystem-sharepoint",
+    "description": "Flysystem adapter for Sharepoint",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Thijs van den Anker",
+            "email": "thijs@bitsnbolts.nl"
+        }
+    ],
+    "require": {
+        "php": ">=5.5.0",
+        "league/flysystem": "~1.0",
+        "vgrem/php-spo": "dev-master"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "~4.0",
+        "mockery/mockery": "~0.9"
+    },
+    "autoload": {
+        "psr-4": {
+            "BitsnBolts\\Flysystem\\Sharepoint\\": "src/"
+        }
+    },
+    "config": {
+        "bin-dir": "bin"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "1.0-dev"
+        }
+    }
+}
