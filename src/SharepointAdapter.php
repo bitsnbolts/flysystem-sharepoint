@@ -3,20 +3,25 @@
 namespace BitsnBolts\Flysystem\Sharepoint;
 
 use Exception;
-use League\Flysystem\Adapter\AbstractAdapter;
-use League\Flysystem\Adapter\Polyfill\NotSupportingVisibilityTrait;
-use League\Flysystem\Config;
-use League\Flysystem\FileNotFoundException;
 use League\Flysystem\Util;
-use Office365\PHP\Client\Runtime\Auth\AuthenticationContext;
+use League\Flysystem\Config;
+use Office365\PHP\Client\SharePoint\File;
+use League\Flysystem\FileNotFoundException;
+use Office365\PHP\Client\Runtime\HttpMethod;
+use League\Flysystem\Adapter\AbstractAdapter;
 use Office365\PHP\Client\SharePoint\ClientContext;
+use Office365\PHP\Client\Runtime\CreateEntityQuery;
+use Office365\PHP\Client\SharePoint\RoleAssignment;
 use Office365\PHP\Client\SharePoint\ListTemplateType;
+use Office365\PHP\Client\Runtime\Utilities\RequestOptions;
 use Office365\PHP\Client\SharePoint\ListCreationInformation;
 use Office365\PHP\Client\SharePoint\FileCreationInformation;
-use Office365\PHP\Client\SharePoint\File;
+use Office365\PHP\Client\Runtime\Auth\AuthenticationContext;
+use League\Flysystem\Adapter\Polyfill\NotSupportingVisibilityTrait;
 
 class SharepointAdapter extends AbstractAdapter
 {
+
     use NotSupportingVisibilityTrait;
 
     /**
@@ -24,10 +29,15 @@ class SharepointAdapter extends AbstractAdapter
      */
     protected $client;
 
-	/**
-	 * @var AuthenticationContext
-	 */
+    /**
+     * @var AuthenticationContext
+     */
     protected $auth;
+
+    /**
+     * @var array
+     */
+    protected $settings;
 
     /**
      * @var string[]
@@ -48,134 +58,10 @@ class SharepointAdapter extends AbstractAdapter
      */
     public function __construct($settings, $prefix = null)
     {
-    	$this->authorize($settings);
-	    $this->client = new ClientContext($settings['url'], $this->auth);
+        $this->settings = $settings;
+        $this->authorize();
+        $this->client = new ClientContext($this->settings['url'], $this->auth);
         $this->setPathPrefix($prefix);
-    }
-
-    private function showList($listTitle)
-    {
-	    $lists = $this->client->getWeb()->getLists()->filter('Title eq \''. $listTitle . '\'')->top(1);
-	    $this->client->load($lists);
-	    $this->client->executeQuery();
-	    $listData = $lists->getData();
-	    if (!count($listData)) {
-	    	return array();
-	    }
-	    $list = $listData[0];
-	    $items = $list->getItems();
-	    $this->client->load($items);
-	    $this->client->executeQuery();
-	    foreach( $items->getData() as $item ) {
-//		    print "Task: '{$item->Title}'\r\n";
-	    }
-	    return $items->getData();
-    }
-
-    private function getList($path)
-    {
-    	$listTitle = $this->getListTitleForPath($path);
-	    $lists = $this->client->getWeb()->getLists()->filter('Title eq \''. $listTitle . '\'')->top(1);
-	    $this->client->load($lists);
-	    $this->client->executeQuery();
-	    $listData = $lists->getData();
-	    if (count($listData) === 0) {
-	    	throw new ListNotFoundException();
-	    }
-	    $list = $listData[0];
-	    return $list;
-    }
-
-    private function getListTitleForPath($path)
-    {
-	    return current(explode('/',$path));
-    }
-
-    private function getFilenameForPath($path)
-    {
-	    $parts = explode( '/', $path );
-
-	    $filename = end( $parts );
-
-	    return $filename;
-    }
-
-	/**
-	 * @param $path
-	 *
-	 * @return mixed
-	 */
-	protected function getFileByPath( $path )
-	{
-		$list = $this->getList( $path );
-		// @todo make this dynamic based on the path.
-		$items = $list->getItems();
-
-		$filename = $this->getFilenameForPath( $path );
-		$items->filter( 'Title eq \'' . $filename . '\'')->top(1);
-		$this->client->load( $items );
-		$this->client->executeQuery();
-		if ($items->getCount() === 0) {
-			throw new FileNotFoundException($path);
-		}
-		$item = $items->getItem(0);
-		$file = $item->getFile();
-		$this->client->load( $file );
-
-		try {
-			$this->client->executeQuery();
-		} catch (Exception $exception) {
-			throw new FileNotFoundException($path);
-		}
-
-		return $file;
-	}
-
-	private function printLists()
-    {
-	    $lists = $this->client->getWeb()->getLists();
-	    $this->client->load($lists);
-	    $this->client->executeQuery();
-	    foreach( $lists->getData() as $list ) {
-		    print "List title: '{$list->Title}'\r\n";
-	    }
-    }
-
-    private function createList($listTitle)
-    {
-	    $info = new ListCreationInformation($listTitle);
-	    $info->BaseTemplate = ListTemplateType::DocumentLibrary;
-	    $list = $this->client->getWeb()->getLists()->add($info);
-	    $this->client->executeQuery();
-	    $connector = $list->getContext();
-	    $list->breakRoleInheritance(true);
-	    $connector->executeQuery();
-	    return $list;
-    }
-
-    private function addFileToList($path, $upload)
-    {
-    	try {
-    		$list = $this->getList($path);
-	    } catch (ListNotFoundException $e) {
-			$list = $this->createList($this->getListTitleForPath($path));
-	    }
-	    $connector = $list->getContext();
-
-	    $fileCreationInformation = new FileCreationInformation();
-	    $fileCreationInformation->Content = file_get_contents($upload->getFileName());
-	    $fileCreationInformation->Url = basename(str_replace('\'', '\'\'', $upload->getFileName()));
-
-	    $uploadFile = $list->getRootFolder()->getFiles()->add($fileCreationInformation);
-
-	    $connector->executeQuery();
-
-	    $uploadFile->getListItemAllFields()->setProperty('Title', basename(str_replace('\'', '\'\'', $upload->getFileName())));
-	    $uploadFile->getListItemAllFields()->update();
-
-	    $connector->executeQuery();
-
-	    return $uploadFile;
     }
 
     /**
@@ -237,9 +123,9 @@ class SharepointAdapter extends AbstractAdapter
     public function delete($path)
     {
         $path = $this->applyPathPrefix($path);
-		$file = $this->getFileByPath($path);
-		$file->recycle();
-		$this->client->executeQuery();
+        $file = $this->getFileByPath($path);
+        $file->recycle();
+        $this->client->executeQuery();
 
         return true;
     }
@@ -260,7 +146,7 @@ class SharepointAdapter extends AbstractAdapter
      */
     public function createDir($dirname, Config $config)
     {
-    	$this->createList($dirname);
+        $this->createList($dirname);
         return ['path' => $dirname, 'type' => 'dir'];
     }
 
@@ -269,14 +155,14 @@ class SharepointAdapter extends AbstractAdapter
      */
     public function has($path)
     {
-	    try {
-		    $this->getFileByPath($path);
-	    } catch (FileNotFoundException $e) {
-	    	return false;
-		} catch (ListNotFoundException $e) {
-	    	return false;
-	    }
-		return true;
+        try {
+            $this->getFileByPath($path);
+        } catch (FileNotFoundException $e) {
+            return false;
+        } catch (ListNotFoundException $e) {
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -285,19 +171,10 @@ class SharepointAdapter extends AbstractAdapter
     public function read($path)
     {
         $path = $this->applyPathPrefix($path);
-	    $file = $this->getFileByPath( $path);
-	    $fileContent = File::openBinary($this->client, $file->getProperty('ServerRelativeUrl') );
-	    $response = array('contents' => $fileContent);
-	    return $response;
-    }
-
-	/**
-	 * Open this file by redirecting the user to sharepoint.
-	 * @param $path
-	 */
-    public function open($path)
-    {
-		die('foo');
+        $file = $this->getFileByPath( $path);
+        $fileContent = File::openBinary($this->client, $file->getProperty('ServerRelativeUrl') );
+        $response = array('contents' => $fileContent);
+        return $response;
     }
 
     /**
@@ -316,43 +193,12 @@ class SharepointAdapter extends AbstractAdapter
     public function listContents($directory = '', $recursive = false)
     {
         $directory = $this->applyPathPrefix($directory);
-		$listing = array($this->showList($directory));
-		$normalizer = [$this, 'normalizeResponse'];
-		$paths = array($directory);
-		$normalized = array_map($normalizer, $listing, $paths);
+        $listing = array($this->showList($directory));
+        $normalizer = [$this, 'normalizeResponse'];
+        $paths = array($directory);
+        $normalized = array_map($normalizer, $listing, $paths);
         return Util::emulateDirectories($normalized);
     }
-
-	/**
-	 * Normalize the object result array.
-	 *
-	 * @param array  $response
-	 * @param string $path
-	 *
-	 * @return array
-	 */
-	protected function normalizeResponse(array $response, $path = null)
-	{
-		if (substr($path, -1) === '/') {
-			return ['type' => 'dir', 'path' => $this->removePathPrefix(rtrim($path, '/'))];
-		}
-
-		$path = $this->removePathPrefix($path);
-
-
-		$item = $response[0];
-		$modified = date_create( $item->getProperty('TimeLastModified'))->format('U');
-
-		return [
-			'path' => $item->getProperty('ServerRelativeUrl'),
-			'linkingUrl' => $item->getProperty('LinkingUrl'),
-			'timestamp' => (int) $modified,
-			'dirname' => Util::dirname($path[0]),
-			'mimetype' => '',
-			'size' => 12,
-			'type' => 'file',
-		];
-	}
 
     /**
      * {@inheritdoc}
@@ -361,8 +207,8 @@ class SharepointAdapter extends AbstractAdapter
     {
         $path = $this->applyPathPrefix($path);
 
-		$file = array($this->getFileByPath($path));
-		return $this->normalizeResponse($file, 'foobar');
+        $file = array($this->getFileByPath($path));
+        return $this->normalizeResponse($file, 'foobar');
     }
 
     /**
@@ -384,11 +230,235 @@ class SharepointAdapter extends AbstractAdapter
     /**
      * {@inheritdoc}
      */
+    public function getVisibility( $path )
+    {
+        // TODO: Implement getVisibility() method.
+    }
+
+    public function grantUserAccessToPath($email, $path)
+    {
+        // @todo: only do this when user doesnt have the permissions yet?
+        $url = $this->buildAccessUrl( $email, $path );
+        $request = new RequestOptions($url, null, null, HttpMethod::Post);
+        $this->client->ensureFormDigest($request);
+        $this->client->executeQueryDirect($request);
+    }
+
+    private function getContributorRole()
+    {
+        $roleDefinitions = $this->client->getWeb()->getRoleDefinitions();
+        $roleDefinitions->filter('RoleTypeKind eq 3');
+        $this->client->load($roleDefinitions);
+        $this->client->executeQuery();
+        return $roleDefinitions->getItem(0);
+    }
+
+
+    /**
+     * {@inheritdoc}
+     */
     public function getTimestamp($path)
     {
         return $this->getMetadata($path);
     }
 
+
+    private function showList($listTitle)
+    {
+        $lists = $this->client->getWeb()->getLists()->filter('Title eq \''. $listTitle . '\'')->top(1);
+        $this->client->load($lists);
+        $this->client->executeQuery();
+
+        $list = $lists->getItem(0);
+        $items = $list->getItems();
+        $this->client->load($items);
+        $this->client->executeQuery();
+        return $items->getData();
+    }
+
+    private function getList($path)
+    {
+        $listTitle = $this->getListTitleForPath($path);
+        $lists = $this->client->getWeb()->getLists()->filter('Title eq \''. $listTitle . '\'')->top(1);
+        $this->client->load($lists);
+        $this->client->executeQuery();
+        if ($lists->getCount() === 0) {
+            throw new ListNotFoundException();
+        }
+        return $lists->getItem(0);
+    }
+
+    private function getListTitleForPath($path)
+    {
+        return current(explode('/',$path));
+    }
+
+    // @todo: I dont like that I have two types of paths in the adapter..
+    // @todo: pick one?
+    private function getListTitleForGroupPath($path)
+    {
+        $parts = explode( '/', $path );
+        return $parts[3];
+    }
+
+    private function getFilenameForPath($path)
+    {
+        $parts = explode( '/', $path );
+
+        $filename = end( $parts );
+
+        return $filename;
+    }
+
+    /**
+     * @param $path
+     *
+     * @return mixed
+     */
+    protected function getFileByPath( $path )
+    {
+        $list = $this->getList( $path );
+        // @todo make this dynamic based on the path.
+        $items = $list->getItems();
+
+        $filename = $this->getFilenameForPath( $path );
+        $items->filter( 'Title eq \'' . $filename . '\'')->top(1);
+        $this->client->load( $items );
+        $this->client->executeQuery();
+        if ($items->getCount() === 0) {
+            throw new FileNotFoundException($path);
+        }
+        $item = $items->getItem(0);
+        $file = $item->getFile();
+        $this->client->load( $file );
+
+        try {
+            $this->client->executeQuery();
+        } catch (Exception $exception) {
+            throw new FileNotFoundException($path);
+        }
+
+        return $file;
+    }
+
+    /**
+     * @return \Office365\PHP\Client\SharePoint\User
+     */
+    protected function getUserByEmail(): \Office365\PHP\Client\SharePoint\User
+    {
+        $users = $this->client->getWeb()->getSiteUsers();
+        $this->client->load( $users );
+        $this->client->executeQuery();
+
+        try {
+            // @todo: mag getByEmail ook?
+            $user = $users->getByEmail( 'tvandenanker@adsysco.nl' );
+
+            $this->client->load( $user );
+            $this->client->executeQuery();
+
+        } catch ( Exception $e ) {
+
+            die( '<b>Foutmelding:</b> De gebruikersnaam tvandenanker@adsysco.nl is niet gevonden in Office 365.' );
+        }
+
+        return $user;
+    }
+
+    /**
+     * @param $email
+     * @param $path
+     *
+     * @return string
+     */
+    protected function buildAccessUrl( $email, $path ): string
+    {
+        $listTitle = $this->getListTitleForGroupPath( $path );
+        $user = $this->getUserByEmail( $email );
+        $role = $this->getContributorRole();
+        $url = $this->settings['url']
+               . "/_api/web/lists/getbytitle('{$listTitle}')/roleassignments/addroleassignment(principalid={$user->Id},roledefid={$role->Id})";
+
+        return $url; //     $request = new \Office365\PHP\Client\Runtime\Utilities\RequestOptions($fullUrl, null, null, HttpMethod::Post);
+    }
+
+    private function printLists()
+    {
+        $lists = $this->client->getWeb()->getLists();
+        $this->client->load($lists);
+        $this->client->executeQuery();
+        foreach( $lists->getData() as $list ) {
+            print "List title: '{$list->Title}'\r\n";
+        }
+    }
+
+    private function createList($listTitle)
+    {
+        $info = new ListCreationInformation($listTitle);
+        $info->BaseTemplate = ListTemplateType::DocumentLibrary;
+        $list = $this->client->getWeb()->getLists()->add($info);
+        $this->client->executeQuery();
+        $connector = $list->getContext();
+        $list->breakRoleInheritance(true);
+        $connector->executeQuery();
+        return $list;
+    }
+
+    private function addFileToList($path, $upload)
+    {
+        try {
+            $list = $this->getList($path);
+        } catch (ListNotFoundException $e) {
+            $list = $this->createList($this->getListTitleForPath($path));
+        }
+        $connector = $list->getContext();
+
+        $fileCreationInformation = new FileCreationInformation();
+        $fileCreationInformation->Content = file_get_contents($upload->getFileName());
+        $fileCreationInformation->Url = basename(str_replace('\'', '\'\'', $upload->getFileName()));
+
+        $uploadFile = $list->getRootFolder()->getFiles()->add($fileCreationInformation);
+
+        $connector->executeQuery();
+
+        $uploadFile->getListItemAllFields()->setProperty('Title', basename(str_replace('\'', '\'\'', $upload->getFileName())));
+        $uploadFile->getListItemAllFields()->update();
+
+        $connector->executeQuery();
+
+        return $uploadFile;
+    }
+
+    /**
+     * Normalize the object result array.
+     *
+     * @param array  $response
+     * @param string $path
+     *
+     * @return array
+     */
+    protected function normalizeResponse(array $response, $path = null)
+    {
+        if (substr($path, -1) === '/') {
+            return ['type' => 'dir', 'path' => $this->removePathPrefix(rtrim($path, '/'))];
+        }
+
+        $path = $this->removePathPrefix($path);
+
+
+        $item = $response[0];
+        $modified = date_create( $item->getProperty('TimeLastModified'))->format('U');
+
+        return [
+            'path' => $item->getProperty('ServerRelativeUrl'),
+            'linkingUrl' => $item->getProperty('LinkingUrl'),
+            'timestamp' => (int) $modified,
+            'dirname' => Util::dirname($path[0]),
+            'mimetype' => '',
+            'size' => 12,
+            'type' => 'file',
+        ];
+    }
     /**
      * Builds the normalized output array.
      *
@@ -493,9 +563,9 @@ class SharepointAdapter extends AbstractAdapter
         // @todo
     }
 
-    protected function authorize($settings)
+    protected function authorize()
     {
-		$this->auth = new AuthenticationContext( $settings['url'] );
-		$this->auth->acquireTokenForUser( $settings['username'], $settings['password'] );
+        $this->auth = new AuthenticationContext( $this->settings['url'] );
+        $this->auth->acquireTokenForUser( $this->settings['username'], $this->settings['password'] );
     }
 }
