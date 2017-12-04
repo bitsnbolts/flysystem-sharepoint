@@ -309,6 +309,16 @@ class SharepointAdapter extends AbstractAdapter
         return current(explode('/', $path));
     }
 
+    private function getFolderTitleForPath($path)
+    {
+        $parts = explode('/', $path);
+        // @todo: support nested directories.
+        if (count($parts) !== 3) {
+           return false;
+        }
+        return $parts[1];
+    }
+
     // @todo: I dont like that I have two types of paths in the adapter..
     // @todo: pick one?
     private function getListTitleForGroupPath($path)
@@ -429,6 +439,7 @@ class SharepointAdapter extends AbstractAdapter
         } catch (ListNotFoundException $e) {
             $list = $this->createList($this->getListTitleForPath($path));
         }
+        $folder = $this->getFolderForPath($path, $list);
         $connector = $list->getContext();
 
         $fileCreationInformation = new FileCreationInformation();
@@ -436,7 +447,7 @@ class SharepointAdapter extends AbstractAdapter
         $fileCreationInformation->Url = basename(str_replace('\'', '\'\'',
             $upload->getFileName()));
 
-        $uploadFile = $list->getRootFolder()->getFiles()
+        $uploadFile = $folder->getFiles()
                            ->add($fileCreationInformation);
 
         $connector->executeQuery();
@@ -604,5 +615,41 @@ class SharepointAdapter extends AbstractAdapter
         $this->auth = new AuthenticationContext($this->settings['url']);
         $this->auth->acquireTokenForUser($this->settings['username'],
             $this->settings['password']);
+    }
+
+    /**
+     * @param $listTitle
+     * @param $folderName
+     */
+    private function createFolderInList($list, $folderName)
+    {
+        $parentFolder = $list->getRootFolder();
+        $childFolder = $parentFolder->getFolders()->add($folderName);
+        $this->client->executeQuery();
+        return $childFolder;
+    }
+
+    /**
+     * @param $path
+     * @param $list
+     *
+     * @return \Office365\PHP\Client\SharePoint\Folder
+     */
+    private function getFolderForPath( $path, $list ) {
+        $folderName = $this->getFolderTitleForPath($path);
+        $folder = $this->client->getWeb()
+                               ->getFolderByServerRelativeUrl($list->getProperty('ParentWebUrl')
+                                                              . '/'
+                                                              . $list->getProperty('Title')
+                                                              . '/'
+                                                              . $folderName);
+        $this->client->load($folder);
+        try {
+            $this->client->executeQuery();
+        } catch (Exception $e) {
+            $folder = $this->createFolderInList($list, $folderName);
+        }
+
+        return $folder;
     }
 }
