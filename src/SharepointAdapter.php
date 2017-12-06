@@ -102,9 +102,10 @@ class SharepointAdapter extends AbstractAdapter
      */
     public function rename($path, $newpath)
     {
-        $this->copy($path, $newpath);
-
-        return $this->delete($path);
+        $file = $this->getFileByPath($path);
+        $file->moveTo($newpath, 1);
+        $this->client->executeQuery();
+        return true;
     }
 
     public function copy($path, $newpath)
@@ -112,9 +113,10 @@ class SharepointAdapter extends AbstractAdapter
         $path = $this->applyPathPrefix($path);
         $newpath = $this->applyPathPrefix($newpath);
 
-        // @todo: implement the copy action.
-        // $this->client->copyBlob($this->container, $newpath, $this->container, $path);
-
+        // @todo.
+//        $file = $this->getFileByPath($path);
+//        $file->moveTo($newpath);
+//        $this->client->executeQuery();
         return true;
     }
 
@@ -345,9 +347,8 @@ class SharepointAdapter extends AbstractAdapter
     protected function getFileByPath($path)
     {
         $list = $this->getList($path);
-        // @todo make this dynamic based on the path.
-        $items = $list->getItems();
-
+        $folder = $this->getFolderForPath($path, $list);
+        $items = $folder->getFiles();
         $filename = $this->getFilenameForPath($path);
         $items->filter('Title eq \'' . $filename . '\'')->top(1);
         $this->client->load($items);
@@ -355,10 +356,8 @@ class SharepointAdapter extends AbstractAdapter
         if ($items->getCount() === 0) {
             throw new FileNotFoundException($path);
         }
-        $item = $items->getItem(0);
-        $file = $item->getFile();
+        $file = $items->getItem(0);
         $this->client->load($file);
-
         try {
             $this->client->executeQuery();
         } catch (Exception $exception) {
@@ -425,6 +424,7 @@ class SharepointAdapter extends AbstractAdapter
         $info->BaseTemplate = ListTemplateType::DocumentLibrary;
         $list = $this->client->getWeb()->getLists()->add($info);
         $this->client->executeQuery();
+
         $connector = $list->getContext();
         $list->breakRoleInheritance(true);
         $connector->executeQuery();
