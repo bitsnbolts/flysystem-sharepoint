@@ -370,22 +370,21 @@ class SharepointAdapter extends AbstractAdapter
     /**
      * @return \Office365\PHP\Client\SharePoint\User
      */
-    protected function getUserByEmail(): \Office365\PHP\Client\SharePoint\User
+    protected function getUserByEmail($email): \Office365\PHP\Client\SharePoint\User
     {
         $users = $this->client->getWeb()->getSiteUsers();
         $this->client->load($users);
         $this->client->executeQuery();
 
         try {
-            // @todo: mag getByEmail ook?
-            $user = $users->getByEmail('tvandenanker@adsysco.nl');
+            $user = $users->getByEmail($email);
 
             $this->client->load($user);
             $this->client->executeQuery();
 
         } catch (Exception $e) {
 
-            die('<b>Foutmelding:</b> De gebruikersnaam tvandenanker@adsysco.nl is niet gevonden in Office 365.');
+            die('<b>Foutmelding:</b> De gebruikersnaam ' . $email . ' is niet gevonden in Office 365.');
         }
 
         return $user;
