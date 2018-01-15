@@ -441,8 +441,8 @@ class SharepointAdapter extends AbstractAdapter
 
         $fileCreationInformation = new FileCreationInformation();
         $fileCreationInformation->Content = file_get_contents($upload->getFileName());
-        $fileCreationInformation->Url = basename(str_replace('\'', '\'\'',
-            $upload->getFileName()));
+        $fileCreationInformation->Url = str_replace('\'', '\'\'',
+            $this->getFilenameForPath($path));
 
         $uploadFile = $folder->getFiles()
                            ->add($fileCreationInformation);
