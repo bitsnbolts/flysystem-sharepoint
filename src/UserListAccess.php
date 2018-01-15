@@ -19,9 +19,9 @@ class UserListAccess implements PluginInterface
         return 'grantUserAccess';
     }
 
-    public function handle($email = null, $path = null)
+    public function handle($loginName = null, $path = null)
     {
         $adapter = $this->filesystem->getAdapter();
-        $adapter->grantUserAccessToPath($email, $path);
+        $adapter->grantUserAccessToPath($loginName, $path);
     }
 }

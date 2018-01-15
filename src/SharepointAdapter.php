@@ -244,10 +244,10 @@ class SharepointAdapter extends AbstractAdapter
         // TODO: Implement getVisibility() method.
     }
 
-    public function grantUserAccessToPath($email, $path)
+    public function grantUserAccessToPath($loginName, $path)
     {
         // @todo: only do this when user doesnt have the permissions yet?
-        $url = $this->buildAccessUrl($email, $path);
+        $url = $this->buildAccessUrl($loginName, $path);
         $request = new RequestOptions($url, null, null, HttpMethod::Post);
         $this->client->ensureFormDigest($request);
         $this->client->executeQueryDirect($request);
@@ -368,21 +368,21 @@ class SharepointAdapter extends AbstractAdapter
     /**
      * @return \Office365\PHP\Client\SharePoint\User
      */
-    protected function getUserByEmail($email): \Office365\PHP\Client\SharePoint\User
+    protected function getUserByLoginName($loginName): \Office365\PHP\Client\SharePoint\User
     {
         $users = $this->client->getWeb()->getSiteUsers();
         $this->client->load($users);
         $this->client->executeQuery();
 
         try {
-            $user = $users->getByEmail($email);
+            $user = $users->getByLoginName('i%3A0%23.f%7Cmembership%7C' . $loginName);
 
             $this->client->load($user);
             $this->client->executeQuery();
 
         } catch (Exception $e) {
 
-            die('<b>Foutmelding:</b> De gebruikersnaam ' . $email . ' is niet gevonden in Office 365.');
+            die('<b>Foutmelding:</b> De gebruikersnaam ' . $loginName . ' is niet gevonden in Office 365.');
         }
 
         return $user;
@@ -394,15 +394,15 @@ class SharepointAdapter extends AbstractAdapter
      *
      * @return string
      */
-    protected function buildAccessUrl($email, $path): string
+    protected function buildAccessUrl($loginName, $path): string
     {
         $listTitle = $this->getListTitleForGroupPath($path);
-        $user = $this->getUserByEmail($email);
+        $user = $this->getUserByLoginName($loginName);
         $role = $this->getContributorRole();
         $url = $this->settings['url']
                . "/_api/web/lists/getbytitle('{$listTitle}')/roleassignments/addroleassignment(principalid={$user->Id},roledefid={$role->Id})";
 
-        return $url; //	    $request = new \Office365\PHP\Client\Runtime\Utilities\RequestOptions($fullUrl, null, null, HttpMethod::Post);
+        return $url; //     $request = new \Office365\PHP\Client\Runtime\Utilities\RequestOptions($fullUrl, null, null, HttpMethod::Post);
     }
 
     private function printLists()
