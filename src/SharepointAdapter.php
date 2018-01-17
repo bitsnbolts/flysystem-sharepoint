@@ -39,6 +39,9 @@ class SharepointAdapter extends AbstractAdapter
      */
     protected $settings;
 
+    protected $fileCache = [];
+    protected $listCache = [];
+
     /**
      * @var string[]
      */
@@ -292,6 +295,9 @@ class SharepointAdapter extends AbstractAdapter
 
     private function getList($path)
     {
+        if (array_key_exists($path, $this->listCache)) {
+            return $this->listCache[$path];
+        }
         $listTitle = $this->getListTitleForPath($path);
         $lists = $this->client->getWeb()->getLists()->filter('Title eq \''
                                                              . $listTitle
@@ -303,7 +309,9 @@ class SharepointAdapter extends AbstractAdapter
             throw new ListNotFoundException();
         }
 
-        return $lists->getItem(0);
+        $list = $lists->getItem(0);
+        $this->listCache[$path] = $list;
+        return $list;
     }
 
     private function getListTitleForPath($path)
@@ -344,6 +352,9 @@ class SharepointAdapter extends AbstractAdapter
      */
     protected function getFileByPath($path)
     {
+        if (array_key_exists($path, $this->fileCache)) {
+            return $this->fileCache[$path];
+        }
         $list = $this->getList($path);
         $folder = $this->getFolderForPath($path, $list);
         $items = $folder->getFiles();
@@ -361,7 +372,7 @@ class SharepointAdapter extends AbstractAdapter
         } catch (Exception $exception) {
             throw new FileNotFoundException($path);
         }
-
+        $this->fileCache[$path] = $file;
         return $file;
     }
 

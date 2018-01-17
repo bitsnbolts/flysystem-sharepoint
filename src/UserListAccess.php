@@ -22,6 +22,9 @@ class UserListAccess implements PluginInterface
     public function handle($loginName = null, $path = null)
     {
         $adapter = $this->filesystem->getAdapter();
+        if (is_a($adapter, \League\Flysystem\Cached\CachedAdapter::class) && $adapter->getAdapter()) {
+            $adapter = $adapter->getAdapter();
+        }
         $adapter->grantUserAccessToPath($loginName, $path);
     }
 }
