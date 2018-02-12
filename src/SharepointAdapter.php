@@ -440,7 +440,7 @@ class SharepointAdapter extends AbstractAdapter
         return $list;
     }
 
-    private function addFileToList($path, $upload)
+    private function addFileToList($path, $content)
     {
         try {
             $list = $this->getList($path);
@@ -451,9 +451,8 @@ class SharepointAdapter extends AbstractAdapter
         $connector = $list->getContext();
 
         $fileCreationInformation = new FileCreationInformation();
-        $fileCreationInformation->Content = file_get_contents($upload->getFileName());
-        $fileCreationInformation->Url = str_replace('\'', '\'\'',
-            $this->getFilenameForPath($path));
+        $fileCreationInformation->Content = $content;
+        $fileCreationInformation->Url = $this->getFilenameForPath($path);
 
         $uploadFile = $folder->getFiles()
                            ->add($fileCreationInformation);
@@ -461,8 +460,7 @@ class SharepointAdapter extends AbstractAdapter
         $connector->executeQuery();
 
         $uploadFile->getListItemAllFields()
-                   ->setProperty('Title', basename(str_replace('\'', '\'\'',
-                       $upload->getFileName())));
+                   ->setProperty('Title', $this->getFilenameForPath($path));
         $uploadFile->getListItemAllFields()->update();
 
         $connector->executeQuery();
