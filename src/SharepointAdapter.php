@@ -111,6 +111,25 @@ class SharepointAdapter extends AbstractAdapter
         return true;
     }
 
+    /**
+     * Retrieve url for provided file path. This helps support Laravel Flysystem support
+     * This will return the ServerRelativeUrl property
+     * @see https://github.com/illuminate/filesystem/blob/master/FilesystemAdapter.php
+     * @param $path The path of the file
+     * @return string The server relative url for this file
+     * @throws FileNotFoundException
+     */
+    public function getUrl($path)
+    {
+        $path = $this->applyPathPrefix($path);
+        $file = $this->getFileByPath($path);
+        if (!$file) {
+            throw new FileNotFoundException($path);
+        }
+        return $file->getProperty('ServerRelativeUrl');
+
+    }
+
     public function copy($path, $newpath)
     {
         $path = $this->applyPathPrefix($path);
@@ -597,7 +616,6 @@ class SharepointAdapter extends AbstractAdapter
     protected function upload($path, $contents, Config $config)
     {
         $path = $this->applyPathPrefix($path);
-        $listTitle = $this->getListTitleForPath($path);
         $result = $this->addFileToList($path, $contents);
         $properties = $result->getProperties();
         $modified = date_create($properties['TimeLastModified'])->format('U');
