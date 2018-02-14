@@ -398,7 +398,7 @@ class SharepointAdapter extends AbstractAdapter
     /**
      * @return \Office365\PHP\Client\SharePoint\User
      */
-    protected function getUserByLoginName($loginName): \Office365\PHP\Client\SharePoint\User
+    protected function getUserByLoginName($loginName)
     {
         $users = $this->client->getWeb()->getSiteUsers();
         $this->client->load($users);
@@ -424,7 +424,7 @@ class SharepointAdapter extends AbstractAdapter
      *
      * @return string
      */
-    protected function buildAccessUrl($loginName, $path): string
+    protected function buildAccessUrl($loginName, $path)
     {
         $listTitle = $this->getListTitleForGroupPath($path);
         $user = $this->getUserByLoginName($loginName);
