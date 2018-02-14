@@ -111,6 +111,25 @@ class SharepointAdapter extends AbstractAdapter
         return true;
     }
 
+    /**
+     * Retrieve url for provided file path. This helps support Laravel Flysystem support
+     * This will return the ServerRelativeUrl property
+     * @see https://github.com/illuminate/filesystem/blob/master/FilesystemAdapter.php
+     * @param $path The path of the file
+     * @return string The server relative url for this file
+     * @throws FileNotFoundException
+     */
+    public function getUrl($path)
+    {
+        $path = $this->applyPathPrefix($path);
+        $file = $this->getFileByPath($path);
+        if (!$file) {
+            throw new FileNotFoundException($path);
+        }
+        return $file->getProperty('ServerRelativeUrl');
+
+    }
+
     public function copy($path, $newpath)
     {
         $path = $this->applyPathPrefix($path);
@@ -379,7 +398,7 @@ class SharepointAdapter extends AbstractAdapter
     /**
      * @return \Office365\PHP\Client\SharePoint\User
      */
-    protected function getUserByLoginName($loginName): \Office365\PHP\Client\SharePoint\User
+    protected function getUserByLoginName($loginName)
     {
         $users = $this->client->getWeb()->getSiteUsers();
         $this->client->load($users);
@@ -405,7 +424,7 @@ class SharepointAdapter extends AbstractAdapter
      *
      * @return string
      */
-    protected function buildAccessUrl($loginName, $path): string
+    protected function buildAccessUrl($loginName, $path)
     {
         $listTitle = $this->getListTitleForGroupPath($path);
         $user = $this->getUserByLoginName($loginName);
@@ -440,7 +459,7 @@ class SharepointAdapter extends AbstractAdapter
         return $list;
     }
 
-    private function addFileToList($path, $upload)
+    private function addFileToList($path, $content)
     {
         try {
             $list = $this->getList($path);
@@ -451,9 +470,8 @@ class SharepointAdapter extends AbstractAdapter
         $connector = $list->getContext();
 
         $fileCreationInformation = new FileCreationInformation();
-        $fileCreationInformation->Content = file_get_contents($upload->getFileName());
-        $fileCreationInformation->Url = str_replace('\'', '\'\'',
-            $this->getFilenameForPath($path));
+        $fileCreationInformation->Content = $content;
+        $fileCreationInformation->Url = $this->getFilenameForPath($path);
 
         $uploadFile = $folder->getFiles()
                            ->add($fileCreationInformation);
@@ -461,8 +479,7 @@ class SharepointAdapter extends AbstractAdapter
         $connector->executeQuery();
 
         $uploadFile->getListItemAllFields()
-                   ->setProperty('Title', basename(str_replace('\'', '\'\'',
-                       $upload->getFileName())));
+                   ->setProperty('Title', $this->getFilenameForPath($path));
         $uploadFile->getListItemAllFields()->update();
 
         $connector->executeQuery();
@@ -599,7 +616,6 @@ class SharepointAdapter extends AbstractAdapter
     protected function upload($path, $contents, Config $config)
     {
         $path = $this->applyPathPrefix($path);
-        $listTitle = $this->getListTitleForPath($path);
         $result = $this->addFileToList($path, $contents);
         $properties = $result->getProperties();
         $modified = date_create($properties['TimeLastModified'])->format('U');
