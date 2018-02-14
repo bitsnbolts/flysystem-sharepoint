@@ -359,9 +359,7 @@ class SharepointAdapter extends AbstractAdapter
 
     private function getFilenameForPath($path)
     {
-        $filename = basename($path);
-
-        return $filename;
+        return str_replace('\'', '\'\'', basename($path));
     }
 
     /**
@@ -377,7 +375,7 @@ class SharepointAdapter extends AbstractAdapter
         $list = $this->getList($path);
         $folder = $this->getFolderForPath($path, $list);
         $items = $folder->getFiles();
-        $filename = str_replace('\'', '\'\'', $this->getFilenameForPath($path));
+        $filename = $this->getFilenameForPath($path);
         $items->filter('Name eq \'' . $filename . '\'')->top(1);
         $this->client->load($items);
         $this->client->executeQuery();
@@ -479,7 +477,7 @@ class SharepointAdapter extends AbstractAdapter
         $connector->executeQuery();
 
         $uploadFile->getListItemAllFields()
-                   ->setProperty('Title', $this->getFilenameForPath($path));
+                   ->setProperty('Title', basename($path));
         $uploadFile->getListItemAllFields()->update();
 
         $connector->executeQuery();
