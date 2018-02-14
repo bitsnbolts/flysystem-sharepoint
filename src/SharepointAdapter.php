@@ -467,22 +467,12 @@ class SharepointAdapter extends AbstractAdapter
         $folder = $this->getFolderForPath($path, $list);
         $connector = $list->getContext();
 
-        $fileCreationInformation = new FileCreationInformation();
-        $fileCreationInformation->Content = $content;
-        $fileCreationInformation->Url = $this->getFilenameForPath($path);
+        $uploadedFile = $this->uploadFileToList($path, $content, $folder,
+            $connector);
 
-        $uploadFile = $folder->getFiles()
-                           ->add($fileCreationInformation);
+        $this->setFileTitle($path, $uploadedFile, $connector);
 
-        $connector->executeQuery();
-
-        $uploadFile->getListItemAllFields()
-                   ->setProperty('Title', basename($path));
-        $uploadFile->getListItemAllFields()->update();
-
-        $connector->executeQuery();
-
-        return $uploadFile;
+        return $uploadedFile;
     }
 
     /**
@@ -673,5 +663,40 @@ class SharepointAdapter extends AbstractAdapter
         }
 
         return $folder;
+    }
+
+    /**
+     * @param $path
+     * @param $content
+     * @param $folder
+     * @param $connector
+     *
+     * @return mixed
+     */
+    private function uploadFileToList($path, $content, $folder, $connector)
+    {
+        $fileCreationInformation = new FileCreationInformation();
+        $fileCreationInformation->Content = $content;
+        $fileCreationInformation->Url = $this->getFilenameForPath($path);
+
+        $uploadFile = $folder->getFiles()
+                             ->add($fileCreationInformation);
+
+        $connector->executeQuery();
+
+        return $uploadFile;
+    }
+
+    /**
+     * @param $path
+     * @param $file
+     * @param $connector
+     */
+    private function setFileTitle($path, $file, $connector)
+    {
+        $file->getListItemAllFields()
+                   ->setProperty('Title', basename($path));
+        $file->getListItemAllFields()->update();
+        $connector->executeQuery();
     }
 }
