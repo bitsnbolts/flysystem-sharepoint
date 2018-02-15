@@ -41,6 +41,7 @@ class SharepointAdapter extends AbstractAdapter
 
     protected $fileCache = [];
     protected $listCache = [];
+    protected $folderCache = [];
 
     /**
      * @var string[]
@@ -649,12 +650,17 @@ class SharepointAdapter extends AbstractAdapter
      */
     private function getFolderForPath( $path, $list ) {
         $folderName = $this->getFolderTitleForPath($path);
+        $serverRelativeUrl = $list->getProperty('ParentWebUrl')
+                               . '/'
+                               . $list->getProperty('Title')
+                               . '/'
+                               . $folderName;
+        if (array_key_exists($serverRelativeUrl, $this->folderCache)) {
+            return $this->folderCache[$serverRelativeUrl];
+        }
+
         $folder = $this->client->getWeb()
-                               ->getFolderByServerRelativeUrl($list->getProperty('ParentWebUrl')
-                                                              . '/'
-                                                              . $list->getProperty('Title')
-                                                              . '/'
-                                                              . $folderName);
+                               ->getFolderByServerRelativeUrl($serverRelativeUrl);
         $this->client->load($folder);
         try {
             $this->client->executeQuery();
@@ -662,6 +668,7 @@ class SharepointAdapter extends AbstractAdapter
             $folder = $this->createFolderInList($list, $folderName);
         }
 
+        $this->folderCache[$serverRelativeUrl] = $folder;
         return $folder;
     }
 
