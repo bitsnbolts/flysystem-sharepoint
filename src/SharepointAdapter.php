@@ -315,10 +315,11 @@ class SharepointAdapter extends AbstractAdapter
 
     private function getList($path)
     {
-        if (array_key_exists($path, $this->listCache)) {
-            return $this->listCache[$path];
-        }
+        // @todo: create a dedicated Path Object.
         $listTitle = $this->getListTitleForPath($path);
+        if (array_key_exists($listTitle, $this->listCache)) {
+            return $this->listCache[$listTitle];
+        }
         $lists = $this->client->getWeb()->getLists()->filter('Title eq \''
                                                              . $listTitle
                                                              . '\'')
@@ -330,7 +331,7 @@ class SharepointAdapter extends AbstractAdapter
         }
 
         $list = $lists->getItem(0);
-        $this->listCache[$path] = $list;
+        $this->listCache[$listTitle] = $list;
         return $list;
     }
 
