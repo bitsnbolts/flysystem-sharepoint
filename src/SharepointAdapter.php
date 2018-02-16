@@ -472,8 +472,6 @@ class SharepointAdapter extends AbstractAdapter
         $uploadedFile = $this->uploadFileToList($path, $content, $folder,
             $connector);
 
-        $this->setFileTitle($path, $uploadedFile, $connector);
-
         return $uploadedFile;
     }
 
@@ -693,18 +691,5 @@ class SharepointAdapter extends AbstractAdapter
         $connector->executeQuery();
 
         return $uploadFile;
-    }
-
-    /**
-     * @param $path
-     * @param $file
-     * @param $connector
-     */
-    private function setFileTitle($path, $file, $connector)
-    {
-        $file->getListItemAllFields()
-                   ->setProperty('Title', basename($path));
-        $file->getListItemAllFields()->update();
-        $connector->executeQuery();
     }
 }
