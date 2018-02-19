@@ -276,203 +276,12 @@ class SharepointAdapter extends AbstractAdapter
         $this->client->executeQueryDirect($request);
     }
 
-    private function getContributorRole()
-    {
-        $roleDefinitions = $this->client->getWeb()->getRoleDefinitions();
-        $roleDefinitions->filter('RoleTypeKind eq 3');
-        $this->client->load($roleDefinitions);
-        $this->client->executeQuery();
-
-        return $roleDefinitions->getItem(0);
-    }
-
-
     /**
      * {@inheritdoc}
      */
     public function getTimestamp($path)
     {
         return $this->getMetadata($path);
-    }
-
-
-    private function showList($listTitle)
-    {
-        $lists = $this->client->getWeb()->getLists()->filter('Title eq \''
-                                                             . $listTitle
-                                                             . '\'')
-                              ->top(1);
-        $this->client->load($lists);
-        $this->client->executeQuery();
-
-        $list = $lists->getItem(0);
-        $items = $list->getItems();
-        $this->client->load($items);
-        $this->client->executeQuery();
-
-        return $items->getData();
-    }
-
-    private function getList($path)
-    {
-        // @todo: create a dedicated Path Object.
-        $listTitle = $this->getListTitleForPath($path);
-        if (array_key_exists($listTitle, $this->listCache)) {
-            return $this->listCache[$listTitle];
-        }
-        $lists = $this->client->getWeb()->getLists()->filter('Title eq \''
-                                                             . $listTitle
-                                                             . '\'')
-                              ->top(1);
-        $this->client->load($lists);
-        $this->client->executeQuery();
-        if ($lists->getCount() === 0) {
-            throw new ListNotFoundException();
-        }
-
-        $list = $lists->getItem(0);
-        $this->listCache[$listTitle] = $list;
-        return $list;
-    }
-
-    private function getListTitleForPath($path)
-    {
-        return current(explode('/', $path));
-    }
-
-    private function getFolderTitleForPath($path)
-    {
-        $parts = explode('/', $path);
-        // @todo: support nested directories.
-        if (count($parts) !== 3) {
-           return false;
-        }
-        return $parts[1];
-    }
-
-    // @todo: I dont like that I have two types of paths in the adapter..
-    // @todo: pick one?
-    private function getListTitleForGroupPath($path)
-    {
-        $parts = explode('/', $path);
-
-        return $parts[3];
-    }
-
-    private function getFilenameForPath($path)
-    {
-        return str_replace('\'', '\'\'', basename($path));
-    }
-
-    /**
-     * @param $path
-     *
-     * @return mixed
-     */
-    protected function getFileByPath($path)
-    {
-        if (array_key_exists($path, $this->fileCache)) {
-            return $this->fileCache[$path];
-        }
-        $list = $this->getList($path);
-        $folder = $this->getFolderForPath($path, $list);
-        $items = $folder->getFiles();
-        $filename = $this->getFilenameForPath($path);
-        $items->filter('Name eq \'' . $filename . '\'')->top(1);
-        $this->client->load($items);
-        $this->client->executeQuery();
-        if ($items->getCount() === 0) {
-            throw new FileNotFoundException($path);
-        }
-        $file = $items->getItem(0);
-        $this->client->load($file);
-        try {
-            $this->client->executeQuery();
-        } catch (Exception $exception) {
-            throw new FileNotFoundException($path);
-        }
-        $this->fileCache[$path] = $file;
-        return $file;
-    }
-
-    /**
-     * @return \Office365\PHP\Client\SharePoint\User
-     */
-    protected function getUserByLoginName($loginName)
-    {
-        $users = $this->client->getWeb()->getSiteUsers();
-        $this->client->load($users);
-        $this->client->executeQuery();
-
-        try {
-            $user = $users->getByLoginName('i%3A0%23.f%7Cmembership%7C' . $loginName);
-
-            $this->client->load($user);
-            $this->client->executeQuery();
-
-        } catch (Exception $e) {
-
-            die('<b>Foutmelding:</b> De gebruikersnaam ' . $loginName . ' is niet gevonden in Office 365.');
-        }
-
-        return $user;
-    }
-
-    /**
-     * @param $email
-     * @param $path
-     *
-     * @return string
-     */
-    protected function buildAccessUrl($loginName, $path)
-    {
-        $listTitle = $this->getListTitleForGroupPath($path);
-        $user = $this->getUserByLoginName($loginName);
-        $role = $this->getContributorRole();
-        $url = $this->settings['url']
-               . "/_api/web/lists/getbytitle('{$listTitle}')/roleassignments/addroleassignment(principalid={$user->Id},roledefid={$role->Id})";
-
-        return $url; //     $request = new \Office365\PHP\Client\Runtime\Utilities\RequestOptions($fullUrl, null, null, HttpMethod::Post);
-    }
-
-    private function printLists()
-    {
-        $lists = $this->client->getWeb()->getLists();
-        $this->client->load($lists);
-        $this->client->executeQuery();
-        foreach ($lists->getData() as $list) {
-            print "List title: '{$list->Title}'\r\n";
-        }
-    }
-
-    private function createList($listTitle)
-    {
-        $info = new ListCreationInformation($listTitle);
-        $info->BaseTemplate = ListTemplateType::DocumentLibrary;
-        $list = $this->client->getWeb()->getLists()->add($info);
-        $this->client->executeQuery();
-
-        $connector = $list->getContext();
-        $list->breakRoleInheritance(true);
-        $connector->executeQuery();
-
-        return $list;
-    }
-
-    private function addFileToList($path, $content)
-    {
-        try {
-            $list = $this->getList($path);
-        } catch (ListNotFoundException $e) {
-            $list = $this->createList($this->getListTitleForPath($path));
-        }
-        $folder = $this->getFolderForPath($path, $list);
-        $connector = $list->getContext();
-
-        $uploadedFile = $this->uploadFileToList($path, $content, $folder,
-            $connector);
-
-        return $uploadedFile;
     }
 
     /**
@@ -627,6 +436,195 @@ class SharepointAdapter extends AbstractAdapter
         $this->auth = new AuthenticationContext($this->settings['url']);
         $this->auth->acquireTokenForUser($this->settings['username'],
             $this->settings['password']);
+    }
+
+    private function getContributorRole()
+    {
+        $roleDefinitions = $this->client->getWeb()->getRoleDefinitions();
+        $roleDefinitions->filter('RoleTypeKind eq 3');
+        $this->client->load($roleDefinitions);
+        $this->client->executeQuery();
+
+        return $roleDefinitions->getItem(0);
+    }
+
+    private function showList($listTitle)
+    {
+        $lists = $this->client->getWeb()->getLists()->filter('Title eq \''
+                                                             . $listTitle
+                                                             . '\'')
+                              ->top(1);
+        $this->client->load($lists);
+        $this->client->executeQuery();
+
+        $list = $lists->getItem(0);
+        $items = $list->getItems();
+        $this->client->load($items);
+        $this->client->executeQuery();
+
+        return $items->getData();
+    }
+
+    private function getList($path)
+    {
+        // @todo: create a dedicated Path Object.
+        $listTitle = $this->getListTitleForPath($path);
+        if (array_key_exists($listTitle, $this->listCache)) {
+            return $this->listCache[$listTitle];
+        }
+        $lists = $this->client->getWeb()->getLists()->filter('Title eq \''
+                                                             . $listTitle
+                                                             . '\'')
+                              ->top(1);
+        $this->client->load($lists);
+        $this->client->executeQuery();
+        if ($lists->getCount() === 0) {
+            throw new ListNotFoundException();
+        }
+
+        $list = $lists->getItem(0);
+        $this->listCache[$listTitle] = $list;
+        return $list;
+    }
+
+    private function getListTitleForPath($path)
+    {
+        return current(explode('/', $path));
+    }
+
+    private function getFolderTitleForPath($path)
+    {
+        $parts = explode('/', $path);
+        // @todo: support nested directories.
+        if (count($parts) !== 3) {
+            return false;
+        }
+        return $parts[1];
+    }
+
+    // @todo: I dont like that I have two types of paths in the adapter..
+    // @todo: pick one?
+    private function getListTitleForGroupPath($path)
+    {
+        $parts = explode('/', $path);
+
+        return $parts[3];
+    }
+
+    private function getFilenameForPath($path)
+    {
+        return str_replace('\'', '\'\'', basename($path));
+    }
+
+    /**
+     * @param $path
+     *
+     * @return mixed
+     */
+    private function getFileByPath($path)
+    {
+        if (array_key_exists($path, $this->fileCache)) {
+            return $this->fileCache[$path];
+        }
+        $list = $this->getList($path);
+        $folder = $this->getFolderForPath($path, $list);
+        $items = $folder->getFiles();
+        $filename = $this->getFilenameForPath($path);
+        $items->filter('Name eq \'' . $filename . '\'')->top(1);
+        $this->client->load($items);
+        $this->client->executeQuery();
+        if ($items->getCount() === 0) {
+            throw new FileNotFoundException($path);
+        }
+        $file = $items->getItem(0);
+        $this->client->load($file);
+        try {
+            $this->client->executeQuery();
+        } catch (Exception $exception) {
+            throw new FileNotFoundException($path);
+        }
+        $this->fileCache[$path] = $file;
+        return $file;
+    }
+
+    /**
+     * @return \Office365\PHP\Client\SharePoint\User
+     */
+    private function getUserByLoginName($loginName)
+    {
+        $users = $this->client->getWeb()->getSiteUsers();
+        $this->client->load($users);
+        $this->client->executeQuery();
+
+        try {
+            $user = $users->getByLoginName('i%3A0%23.f%7Cmembership%7C' . $loginName);
+
+            $this->client->load($user);
+            $this->client->executeQuery();
+
+        } catch (Exception $e) {
+
+            die('<b>Foutmelding:</b> De gebruikersnaam ' . $loginName . ' is niet gevonden in Office 365.');
+        }
+
+        return $user;
+    }
+
+    /**
+     * @param $email
+     * @param $path
+     *
+     * @return string
+     */
+    private function buildAccessUrl($loginName, $path)
+    {
+        $listTitle = $this->getListTitleForGroupPath($path);
+        $user = $this->getUserByLoginName($loginName);
+        $role = $this->getContributorRole();
+        $url = $this->settings['url']
+               . "/_api/web/lists/getbytitle('{$listTitle}')/roleassignments/addroleassignment(principalid={$user->Id},roledefid={$role->Id})";
+
+        return $url; //     $request = new \Office365\PHP\Client\Runtime\Utilities\RequestOptions($fullUrl, null, null, HttpMethod::Post);
+    }
+
+    private function printLists()
+    {
+        $lists = $this->client->getWeb()->getLists();
+        $this->client->load($lists);
+        $this->client->executeQuery();
+        foreach ($lists->getData() as $list) {
+            print "List title: '{$list->Title}'\r\n";
+        }
+    }
+
+    private function createList($listTitle)
+    {
+        $info = new ListCreationInformation($listTitle);
+        $info->BaseTemplate = ListTemplateType::DocumentLibrary;
+        $list = $this->client->getWeb()->getLists()->add($info);
+        $this->client->executeQuery();
+
+        $connector = $list->getContext();
+        $list->breakRoleInheritance(true);
+        $connector->executeQuery();
+
+        return $list;
+    }
+
+    private function addFileToList($path, $content)
+    {
+        try {
+            $list = $this->getList($path);
+        } catch (ListNotFoundException $e) {
+            $list = $this->createList($this->getListTitleForPath($path));
+        }
+        $folder = $this->getFolderForPath($path, $list);
+        $connector = $list->getContext();
+
+        $uploadedFile = $this->uploadFileToList($path, $content, $folder,
+            $connector);
+
+        return $uploadedFile;
     }
 
     /**
