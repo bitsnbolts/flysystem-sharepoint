@@ -17,6 +17,8 @@ use Office365\PHP\Client\Runtime\Utilities\RequestOptions;
 use Office365\PHP\Client\SharePoint\ListCreationInformation;
 use Office365\PHP\Client\SharePoint\FileCreationInformation;
 use Office365\PHP\Client\Runtime\Auth\AuthenticationContext;
+use Office365\PHP\Client\Runtime\OData\JsonSerializerContext;
+use Office365\PHP\Client\Runtime\OData\ODataMetadataLevel;
 use League\Flysystem\Adapter\Polyfill\NotSupportingVisibilityTrait;
 
 class SharepointAdapter extends AbstractAdapter
@@ -65,7 +67,7 @@ class SharepointAdapter extends AbstractAdapter
     {
         $this->settings = $settings;
         $this->authorize();
-        $this->client = new ClientContext($this->settings['url'], $this->auth);
+        $this->setupClient();
         $this->setPathPrefix($prefix);
     }
 
@@ -662,6 +664,7 @@ class SharepointAdapter extends AbstractAdapter
         try {
             $this->client->executeQuery();
         } catch (Exception $e) {
+            $this->client->clear();
             $folder = $this->createFolderInList($list, $folderName);
         }
 
@@ -689,5 +692,11 @@ class SharepointAdapter extends AbstractAdapter
         $connector->executeQuery();
 
         return $uploadFile;
+    }
+
+    private function setupClient()
+    {
+        $this->client = new ClientContext($this->settings['url'], $this->auth,
+            new JsonSerializerContext(ODataMetadataLevel::Verbose));
     }
 }
