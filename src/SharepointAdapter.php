@@ -664,7 +664,7 @@ class SharepointAdapter extends AbstractAdapter
         try {
             $this->client->executeQuery();
         } catch (Exception $e) {
-            $this->client->clear();
+            $this->client->removePendingRequest();
             $folder = $this->createFolderInList($list, $folderName);
         }
 
