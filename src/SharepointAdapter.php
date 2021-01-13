@@ -549,20 +549,12 @@ class SharepointAdapter extends AbstractAdapter
     }
 
     /**
-     * @return \Office365\PHP\Client\SharePoint\User
+     * @return \Office365\SharePoint\User
      */
     private function getUserByLoginName($loginName)
     {
-        $users = $this->client->getWeb()->getSiteUsers();
-        $this->client->load($users);
-        $this->client->executeQuery();
-
         try {
-            $user = $users->getByLoginName('i%3A0%23.f%7Cmembership%7C' . $loginName);
-
-            $this->client->load($user);
-            $this->client->executeQuery();
-
+            $user = $this->client->getWeb()->ensureUser($loginName)->executeQuery();
         } catch (Exception $e) {
 
             die('<b>Foutmelding:</b> De gebruikersnaam ' . $loginName . ' is niet gevonden in Office 365.');
