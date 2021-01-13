@@ -19,7 +19,6 @@ use League\Flysystem\Adapter\Polyfill\NotSupportingVisibilityTrait;
 
 class SharepointAdapter extends AbstractAdapter
 {
-
     use NotSupportingVisibilityTrait;
 
     /**
@@ -130,7 +129,6 @@ class SharepointAdapter extends AbstractAdapter
             throw new FileNotFoundException($path);
         }
         return $file->getProperty('ServerRelativeUrl');
-
     }
 
     public function copy($path, $newpath)
@@ -202,8 +200,10 @@ class SharepointAdapter extends AbstractAdapter
     {
         $path = $this->applyPathPrefix($path);
         $file = $this->getFileByPath($path);
-        $fileContent = File::openBinary($this->client,
-            $file->getProperty('ServerRelativeUrl'));
+        $fileContent = File::openBinary(
+            $this->client,
+            $file->getProperty('ServerRelativeUrl')
+        );
         $response = array('contents' => $fileContent);
 
         return $response;
@@ -386,8 +386,10 @@ class SharepointAdapter extends AbstractAdapter
     {
         return [
             'type' => 'dir',
-            'path' => $this->removePathPrefix(rtrim($blobPrefix->getName(),
-                '/'))
+            'path' => $this->removePathPrefix(rtrim(
+                $blobPrefix->getName(),
+                '/'
+            ))
         ];
     }
 
@@ -558,7 +560,6 @@ class SharepointAdapter extends AbstractAdapter
         try {
             $user = $this->client->getWeb()->ensureUser($loginName)->executeQuery();
         } catch (Exception $e) {
-
             die('<b>Foutmelding:</b> De gebruikersnaam ' . $loginName . ' is niet gevonden in Office 365.');
         }
 
@@ -616,8 +617,12 @@ class SharepointAdapter extends AbstractAdapter
         $folder = $this->getFolderForPath($path, $list);
         $connector = $list->getContext();
 
-        $uploadedFile = $this->uploadFileToList($path, $content, $folder,
-            $connector);
+        $uploadedFile = $this->uploadFileToList(
+            $path,
+            $content,
+            $folder,
+            $connector
+        );
 
         return $uploadedFile;
     }
@@ -642,7 +647,8 @@ class SharepointAdapter extends AbstractAdapter
      *
      * @return \Office365\SharePoint\Folder
      */
-    private function getFolderForPath( $path, $list ) {
+    private function getFolderForPath($path, $list)
+    {
         $folderName = $this->getFolderTitleForPath($path);
         $serverRelativeUrl = $list->getProperty('ParentWebUrl')
                                . '/'
