@@ -5,20 +5,16 @@ namespace BitsnBolts\Flysystem\Sharepoint;
 use Exception;
 use League\Flysystem\Util;
 use League\Flysystem\Config;
-use Office365\PHP\Client\SharePoint\File;
+use Office365\SharePoint\File;
 use League\Flysystem\FileNotFoundException;
-use Office365\PHP\Client\Runtime\HttpMethod;
+use Office365\Runtime\Http\HttpMethod;
+use Office365\Runtime\Auth\UserCredentials;
 use League\Flysystem\Adapter\AbstractAdapter;
-use Office365\PHP\Client\SharePoint\ClientContext;
-use Office365\PHP\Client\Runtime\CreateEntityQuery;
-use Office365\PHP\Client\SharePoint\RoleAssignment;
-use Office365\PHP\Client\SharePoint\ListTemplateType;
-use Office365\PHP\Client\Runtime\Utilities\RequestOptions;
-use Office365\PHP\Client\SharePoint\ListCreationInformation;
-use Office365\PHP\Client\SharePoint\FileCreationInformation;
-use Office365\PHP\Client\Runtime\Auth\AuthenticationContext;
-use Office365\PHP\Client\Runtime\OData\JsonSerializerContext;
-use Office365\PHP\Client\Runtime\OData\ODataMetadataLevel;
+use Office365\SharePoint\ClientContext;
+use Office365\SharePoint\ListTemplateType;
+use Office365\Runtime\Http\RequestOptions;
+use Office365\SharePoint\ListCreationInformation;
+use Office365\SharePoint\FileCreationInformation;
 use League\Flysystem\Adapter\Polyfill\NotSupportingVisibilityTrait;
 
 class SharepointAdapter extends AbstractAdapter
@@ -32,7 +28,7 @@ class SharepointAdapter extends AbstractAdapter
     protected $client;
 
     /**
-     * @var AuthenticationContext
+     * @var UserCredentials
      */
     protected $auth;
 
@@ -117,10 +113,14 @@ class SharepointAdapter extends AbstractAdapter
     /**
      * Retrieve url for provided file path. This helps support Laravel Flysystem support
      * This will return the ServerRelativeUrl property
+     *
      * @see https://github.com/illuminate/filesystem/blob/master/FilesystemAdapter.php
-     * @param $path The path of the file
+     *
+     * @param string $path
+     * The path of the file
+     *
      * @return string The server relative url for this file
-     * @throws FileNotFoundException
+     * @throws FileNotFoundException|ListNotFoundException
      */
     public function getUrl($path)
     {
@@ -435,9 +435,7 @@ class SharepointAdapter extends AbstractAdapter
 
     protected function authorize()
     {
-        $this->auth = new AuthenticationContext($this->settings['url']);
-        $this->auth->acquireTokenForUser($this->settings['username'],
-            $this->settings['password']);
+        $this->auth = new UserCredentials($this->settings['username'], $this->settings['password']);
     }
 
     private function getContributorRole()
@@ -522,6 +520,7 @@ class SharepointAdapter extends AbstractAdapter
      * @param $path
      *
      * @return mixed
+     * @throws ListNotFoundException|FileNotFoundException
      */
     private function getFileByPath($path)
     {
@@ -586,7 +585,7 @@ class SharepointAdapter extends AbstractAdapter
         $url = $this->settings['url']
                . "/_api/web/lists/getbytitle('{$listTitle}')/roleassignments/addroleassignment(principalid={$user->Id},roledefid={$role->Id})";
 
-        return $url; //     $request = new \Office365\PHP\Client\Runtime\Utilities\RequestOptions($fullUrl, null, null, HttpMethod::Post);
+        return $url; //     $request = new \Office365\Runtime\Utilities\RequestOptions($fullUrl, null, null, HttpMethod::Post);
     }
 
     private function printLists()
@@ -630,8 +629,10 @@ class SharepointAdapter extends AbstractAdapter
     }
 
     /**
-     * @param $listTitle
+     * @param $list
      * @param $folderName
+     *
+     * @return mixed
      */
     private function createFolderInList($list, $folderName)
     {
@@ -645,7 +646,7 @@ class SharepointAdapter extends AbstractAdapter
      * @param $path
      * @param $list
      *
-     * @return \Office365\PHP\Client\SharePoint\Folder
+     * @return \Office365\SharePoint\Folder
      */
     private function getFolderForPath( $path, $list ) {
         $folderName = $this->getFolderTitleForPath($path);
@@ -664,7 +665,6 @@ class SharepointAdapter extends AbstractAdapter
         try {
             $this->client->executeQuery();
         } catch (Exception $e) {
-            $this->client->removePendingRequest();
             $folder = $this->createFolderInList($list, $folderName);
         }
 
@@ -696,7 +696,6 @@ class SharepointAdapter extends AbstractAdapter
 
     private function setupClient()
     {
-        $this->client = new ClientContext($this->settings['url'], $this->auth,
-            new JsonSerializerContext(ODataMetadataLevel::Verbose));
+        $this->client = (new ClientContext($this->settings['url']))->withCredentials($this->auth);
     }
 }

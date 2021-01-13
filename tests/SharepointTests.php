@@ -14,7 +14,7 @@ class SharepointTests extends \PHPUnit_Framework_TestCase
 
     protected function getSharepointClient()
     {
-        return Mockery::mock('Office365\PHP\Client\SharePoint\ClientContext');
+        return Mockery::mock('Office365\SharePoint\ClientContext');
     }
 
     protected function getStreamFromString($string)
