@@ -417,9 +417,9 @@ class SharepointAdapter extends AbstractAdapter
         $path = $this->applyPathPrefix($path);
         $result = $this->addFileToList($path, $contents);
         $properties = $result->getProperties();
-        $modified = date_create($properties['TimeLastModified'])->format('U');
+        $modified = date_create($result->getTimeLastModified())->format('U');
 
-        return $this->normalize($properties['ServerRelativeUrl'], $modified,
+        return $this->normalize($result->getServerRelativeUrl(), $modified,
             $contents);
     }
 
