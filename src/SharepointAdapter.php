@@ -227,7 +227,7 @@ class SharepointAdapter extends AbstractAdapter
         $directory = $this->applyPathPrefix($directory);
         $listing = array($this->showList($directory));
         $normalizer = [$this, 'normalizeResponse'];
-        $paths = array($directory);
+        $paths = array_fill(0, count($listing), $directory);
         $normalized = array_map($normalizer, $listing, $paths);
 
         return Util::emulateDirectories($normalized);
@@ -289,12 +289,12 @@ class SharepointAdapter extends AbstractAdapter
     /**
      * Normalize the object result array.
      *
-     * @param array  $response
+     * @param $response
      * @param string $path
      *
      * @return array
      */
-    protected function normalizeResponse(array $response, $path = null)
+    protected function normalizeResponse($response, $path = null)
     {
         if (substr($path, -1) === '/') {
             return [
@@ -305,16 +305,18 @@ class SharepointAdapter extends AbstractAdapter
 
         $path = $this->removePathPrefix($path);
 
-        $item = $response[0];
-        $modified = date_create($item->getProperty('TimeLastModified'))->format('U');
+        $item = $response;
+        $modified = date_create($item->getTimeLastModified())->format('U');
+        $created = date_create($item->getTimeCreated())->format('U');
 
         return [
             'path'       => $item->getProperty('ServerRelativeUrl'),
             'linkingUrl' => $item->getProperty('LinkingUrl'),
-            'timestamp'  => (int)$modified,
-            'dirname'    => Util::dirname($path[0]),
+            'timestamp'  => (int) $modified,
+            'created' => (int) $created,
+            'dirname'    => Util::dirname($path),
             'mimetype'   => '',
-            'size'       => 12,
+            'size'       => $item->getLength(),
             'type'       => 'file',
         ];
     }
@@ -462,7 +464,7 @@ class SharepointAdapter extends AbstractAdapter
         $this->client->executeQuery();
 
         $list = $lists->getItem(0);
-        $items = $list->getItems();
+        $items = $list->getRootFolder()->getFiles();
         $this->client->load($items);
         $this->client->executeQuery();
 
@@ -683,6 +685,9 @@ class SharepointAdapter extends AbstractAdapter
     private function uploadFileToList($path, $content, $folder, $connector)
     {
         $fileCreationInformation = new FileCreationInformation();
+        if (is_resource($content) && get_resource_type($content) === 'stream') {
+            $content = stream_get_contents($content);
+        }
         $fileCreationInformation->Content = $content;
         $fileCreationInformation->Url = $this->getFilenameForPath($path);
 
