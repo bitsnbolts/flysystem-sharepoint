@@ -230,7 +230,7 @@ class SharepointAdapter extends AbstractAdapter
         $paths = array_fill(0, count($listing), $directory);
         $normalized = array_map($normalizer, $listing, $paths);
 
-        return Util::emulateDirectories($normalized);
+        return $normalized;
     }
 
     /**
@@ -314,7 +314,7 @@ class SharepointAdapter extends AbstractAdapter
             'linkingUrl' => $item->getProperty('LinkingUrl'),
             'timestamp'  => (int) $modified,
             'created' => (int) $created,
-            'dirname'    => Util::dirname($path),
+            'dirname'    => $path,
             'mimetype'   => '',
             'size'       => $item->getLength(),
             'type'       => 'file',
