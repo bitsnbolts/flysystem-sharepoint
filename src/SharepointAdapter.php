@@ -225,7 +225,7 @@ class SharepointAdapter extends AbstractAdapter
     public function listContents($directory = '', $recursive = false)
     {
         $directory = $this->applyPathPrefix($directory);
-        $listing = array($this->showList($directory));
+        $listing = $this->showList($directory);
         $normalizer = [$this, 'normalizeResponse'];
         $paths = array_fill(0, count($listing), $directory);
         $normalized = array_map($normalizer, $listing, $paths);
