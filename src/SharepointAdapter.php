@@ -134,7 +134,7 @@ class SharepointAdapter extends AbstractAdapter
         }
 
         $base = $file->getContext()->getBaseUrl();
-        $relativeUrl = substr($file->getProperty('ServerRelativeUrl'), strlen(parse_url($base)['path']));
+        $relativeUrl = substr($file->getServerRelativeUrl(), strlen(parse_url($base)['path']));
         return $base . $relativeUrl;
     }
 
@@ -250,9 +250,9 @@ class SharepointAdapter extends AbstractAdapter
     {
         $path = $this->applyPathPrefix($path);
 
-        $file = array($this->getFileByPath($path));
+        $file = $this->getFileByPath($path);
 
-        return $this->normalizeResponse($file, 'foobar');
+        return $this->normalizeResponse($file, dirname($path));
     }
 
     /**
