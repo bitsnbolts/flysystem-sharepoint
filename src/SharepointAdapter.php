@@ -6,6 +6,7 @@ use Exception;
 use League\Flysystem\Util;
 use League\Flysystem\Config;
 use Office365\SharePoint\File;
+use Office365\SharePoint\ListItem;
 use League\Flysystem\FileNotFoundException;
 use Office365\Runtime\Http\HttpMethod;
 use Office365\Runtime\Auth\UserCredentials;
@@ -128,7 +129,13 @@ class SharepointAdapter extends AbstractAdapter
         if (!$file) {
             throw new FileNotFoundException($path);
         }
-        return $file->getProperty('ServerRelativeUrl');
+        if ($file->getLinkingUri()) {
+            return $file->getLinkingUri();
+        }
+
+        $base = $file->getContext()->getBaseUrl();
+        $relativeUrl = substr($file->getProperty('ServerRelativeUrl'), strlen(parse_url($base)['path']));
+        return $base . $relativeUrl;
     }
 
     public function copy($path, $newpath)
@@ -225,9 +232,12 @@ class SharepointAdapter extends AbstractAdapter
     public function listContents($directory = '', $recursive = false)
     {
         $directory = $this->applyPathPrefix($directory);
-        $listing = array($this->showList($directory));
+        $listing = $this->showList($directory);
+        if (count($listing) === 0) {
+            return [];
+        }
         $normalizer = [$this, 'normalizeResponse'];
-        $paths = array($directory);
+        $paths = array_fill(0, count($listing), $directory);
         $normalized = array_map($normalizer, $listing, $paths);
 
         return Util::emulateDirectories($normalized);
@@ -272,6 +282,7 @@ class SharepointAdapter extends AbstractAdapter
     public function grantUserAccessToPath($loginName, $path)
     {
         // @todo: only do this when user doesnt have the permissions yet?
+        $this->breakRoleInheritance($path);
         $url = $this->buildAccessUrl($loginName, $path);
         $request = new RequestOptions($url, null, null, HttpMethod::Post);
         $this->client->ensureFormDigest($request);
@@ -294,7 +305,7 @@ class SharepointAdapter extends AbstractAdapter
      *
      * @return array
      */
-    protected function normalizeResponse(array $response, $path = null)
+    protected function normalizeResponse(File $item, $path = null)
     {
         if (substr($path, -1) === '/') {
             return [
@@ -305,16 +316,17 @@ class SharepointAdapter extends AbstractAdapter
 
         $path = $this->removePathPrefix($path);
 
-        $item = $response[0];
-        $modified = date_create($item->getProperty('TimeLastModified'))->format('U');
+        $modified = date_create($item->getTimeLastModified())->format('U');
+        $created = date_create($item->getTimeCreated())->format('U');
 
         return [
-            'path'       => $item->getProperty('ServerRelativeUrl'),
-            'linkingUrl' => $item->getProperty('LinkingUrl'),
-            'timestamp'  => (int)$modified,
-            'dirname'    => Util::dirname($path[0]),
+            'path'       => $item->getName(),
+            'linkingUrl' => $item->getLinkingUrl(),
+            'timestamp'  => (int) $modified,
+            'created'  => (int) $created,
+            'dirname'    => $path,
             'mimetype'   => '',
-            'size'       => 12,
+            'size'       => $item->getLength(),
             'type'       => 'file',
         ];
     }
@@ -454,18 +466,13 @@ class SharepointAdapter extends AbstractAdapter
 
     private function showList($listTitle)
     {
-        $lists = $this->client->getWeb()->getLists()->filter('Title eq \''
-                                                             . $listTitle
-                                                             . '\'')
-                              ->top(1);
-        $this->client->load($lists);
-        $this->client->executeQuery();
-
-        $list = $lists->getItem(0);
-        $items = $list->getItems();
-        $this->client->load($items);
-        $this->client->executeQuery();
-
+        $items = $this->client
+            ->getWeb()
+            ->getFolders()
+            ->getByUrl($listTitle)
+            ->getFiles()
+            ->get()
+            ->executeQuery();
         return $items->getData();
     }
 
@@ -512,7 +519,7 @@ class SharepointAdapter extends AbstractAdapter
     {
         $parts = explode('/', $path);
 
-        return $parts[3];
+        return $parts[0];
     }
 
     private function getFilenameForPath($path)
@@ -604,6 +611,15 @@ class SharepointAdapter extends AbstractAdapter
         $list->breakRoleInheritance(true);
         $connector->executeQuery();
 
+        return $list;
+    }
+
+    private function breakRoleInheritance($path)
+    {
+        $list = $this->getList($path);
+        $connector = $list->getContext();
+        $list->breakRoleInheritance(true);
+        $connector->executeQuery();
         return $list;
     }
 
