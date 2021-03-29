@@ -80,7 +80,7 @@ class SharepointAdapter extends AbstractAdapter
      */
     public function writeStream($path, $resource, Config $config)
     {
-        return $this->upload($path, $resource, $config);
+        return $this->upload($path, stream_get_contents($resource), $config);
     }
 
     /**
@@ -96,7 +96,7 @@ class SharepointAdapter extends AbstractAdapter
      */
     public function updateStream($path, $resource, Config $config)
     {
-        return $this->upload($path, $resource, $config);
+        return $this->upload($path, stream_get_contents($resource), $config);
     }
 
     /**
