@@ -1,10 +1,10 @@
-# BitsnBolts\Flysystem\Sharepoint [ALPHA]
+# BitsnBolts\Flysystem\Sharepoint
 
 This is a Flysystem adapter for Sharepoint.
 
 
 ```bash
-composer require thijsvdanker/flysystem-sharepoint
+composer require bitsnbolts/flysystem-sharepoint
 ```
 
 # Bootstrap
