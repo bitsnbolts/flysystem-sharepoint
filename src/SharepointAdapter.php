@@ -159,12 +159,13 @@ class SharepointAdapter extends AbstractAdapter
     public function delete($path)
     {
         $path = $this->applyPathPrefix($path);
+
         if ($this->isFolder($path)) {
-            $folder = $this->getFolderForPath($path, $this->getList($path), false);
+            $folder = $this->getFolderForPath($path, $this->getList($path), false, true);
             $folder->recycle();
         } else {
             try {
-                $file = $this->getFileByPath($path);
+                $file = $this->getFileByPath($path, true);
                 $file->recycle();
             } catch (FileNotFoundException $e) {
                 return true;
@@ -260,11 +261,11 @@ class SharepointAdapter extends AbstractAdapter
     {
         $directory = $this->applyPathPrefix($directory);
         $listing = $this->showList($directory);
+
         if (count($listing) === 0) {
             return [];
         }
 
-        $listing = $this->showList($directory);
         $normalizer = [$this, 'normalizeFileResponse'];
         $paths = array_fill(0, count($listing), $directory);
         $normalized = array_map($normalizer, $listing, $paths);
@@ -274,7 +275,9 @@ class SharepointAdapter extends AbstractAdapter
         $paths = array_fill(0, count($folders), $directory);
         $normalizedFolder = array_map($folderNormalizer, $folders, $paths);
 
-        return Util::emulateDirectories(array_merge($normalized, $normalizedFolder));
+        $result = array_merge($normalized, $normalizedFolder);
+
+        return Util::emulateDirectories($result);
     }
 
     /**
@@ -523,10 +526,16 @@ class SharepointAdapter extends AbstractAdapter
 
     private function showList($listTitle)
     {
-        $items = $this->client
-            ->getWeb()
-            ->getFolders()
-            ->getByUrl($listTitle)
+        $items = $this->client->getWeb();
+
+        // get the right list.
+        $folders = explode('/', $listTitle);
+        while($folderName = array_shift($folders)) {
+            $items = $items->getFolders()
+                ->getByUrl($folderName);
+        }
+
+        $items = $items
             ->getFiles()
             ->get()
             ->executeQuery();

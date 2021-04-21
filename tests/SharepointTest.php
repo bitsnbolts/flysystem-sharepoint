@@ -4,6 +4,7 @@ namespace BitsnBolts\Flysystem\Sharepoint\Test;
 use League\Flysystem\Filesystem;
 use BitsnBolts\Flysystem\Sharepoint\GetUrl;
 use BitsnBolts\Flysystem\Sharepoint\SharepointAdapter;
+use Office365\Runtime\Http\RequestException;
 
 class SharepointTest extends TestBase
 {
@@ -119,8 +120,8 @@ class SharepointTest extends TestBase
 
         [$first, $directory] = $this->fs->listContents(TEST_FILE_PREFIX);
 
-        $this->assertEquals($first['basename'], 'file.txt');
-        $this->assertEquals($directory['basename'], 'test-list-contents-contains-directory');
+        $this->assertEquals('file.txt', $first['basename']);
+        $this->assertEquals('test-list-contents-contains-directory', $directory['basename']);
     }
 
 
@@ -128,14 +129,17 @@ class SharepointTest extends TestBase
     public function testListContentsOfDirectory()
     {
         // Create files
-        $this->createFile('/list-directory/ld-first.txt');
-        $this->createFile('/list-directory/ld-second.txt');
+        $this->createFile('list-directory/ld-first.txt');
+        $this->createFile('list-directory/ld-second.txt');
 
-        // Test that file exists
-        [$first, $second] = $this->fs->listContents(TEST_FILE_PREFIX . 'list-directory');
+        try {
+            [$first, $second] = $this->fs->listContents(TEST_FILE_PREFIX . 'list-directory');
 
-        $this->assertEquals($first['basename'], 'ld-first.txt');
-        $this->assertEquals($second['basename'], 'ld-second.txt');
+            $this->assertEquals('ld-first.txt', $first['basename']);
+            $this->assertEquals('ld-second.txt', $second['basename']);
+        } catch (RequestException $e) {
+            $this->fail($e->getMessage());
+        }
     }
 
 
@@ -238,7 +242,7 @@ class SharepointTest extends TestBase
             try {
                 $this->fs->delete($path);
             } catch (\Exception $e) {
-                var_dump($e);
+                echo 'file purge failed: ' .$e->getMessage();
                 // Do nothing, just continue. We obviously can't clean it
             }
         }
@@ -251,7 +255,7 @@ class SharepointTest extends TestBase
             try {
                 $this->fs->delete($path);
             } catch (\Exception $e) {
-                var_dump($e);
+                echo 'dir purge failed: ' .$e->getMessage();
                 // Do nothing, just continue. We obviously can't clean it
             }
         }
