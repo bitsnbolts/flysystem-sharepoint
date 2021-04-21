@@ -24,6 +24,7 @@ class SharepointTest extends TestBase
         $this->fs = new Filesystem($adapter);
     }
 
+    /** @group write */
     public function testWrite()
     {
         $this->assertEquals(true, $this->fs->write(TEST_FILE_PREFIX . 'testWrite.txt', 'testing'));
@@ -59,6 +60,19 @@ class SharepointTest extends TestBase
         $this->assertEquals(false, $this->fs->has(TEST_FILE_PREFIX . 'testDelete.txt'));
     }
 
+    /** @group del */
+    public function testDeleteDirectory()
+    {
+        // Create directory
+        $result = $this->fs->createDir(TEST_FILE_PREFIX . 'delete-dir');
+        // Ensure it exists
+        $this->assertEquals(true, $this->fs->has(TEST_FILE_PREFIX . 'delete-dir'));
+        // Now delete
+        $this->assertEquals(true, $this->fs->delete(TEST_FILE_PREFIX . 'delete-dir'));
+        // Ensure it no longer exists
+        $this->assertEquals(false, $this->fs->has(TEST_FILE_PREFIX . 'delete-dir'));
+    }
+
     public function testHas()
     {
         // Test that file does not exist
@@ -71,6 +85,7 @@ class SharepointTest extends TestBase
         $this->assertEquals(true, $this->fs->has(TEST_FILE_PREFIX . 'testHas.txt'));
     }
 
+    /** @group has */
     public function testHasInFolder()
     {
         // Test that file does not exist
@@ -91,8 +106,8 @@ class SharepointTest extends TestBase
 
         [$first, $second] = $this->fs->listContents(TEST_FILE_PREFIX);
 
-        $this->assertEquals($first['basename'], 'first.txt');
-        $this->assertEquals($second['basename'], 'second.txt');
+        $this->assertEquals('first.txt', $first['basename']);
+        $this->assertEquals('second.txt', $second['basename']);
     }
 
     /** @group foo */
@@ -104,7 +119,7 @@ class SharepointTest extends TestBase
 
         [$first, $directory] = $this->fs->listContents(TEST_FILE_PREFIX);
 
-        $this->assertEquals($first['basename'], 'first.txt');
+        $this->assertEquals($first['basename'], 'file.txt');
         $this->assertEquals($directory['basename'], 'test-list-contents-contains-directory');
     }
 
@@ -150,7 +165,7 @@ class SharepointTest extends TestBase
 
         // Call metadata
         $metadata = $this->fs->getMetadata(TEST_FILE_PREFIX.'testMetadata.txt');
-        $this->assertEquals("testMetadata.txt", $metadata['path']);
+        $this->assertEquals(TEST_FILE_PREFIX.'testMetadata.txt', $metadata['path']);
     }
 
     public function testTimestamp()
@@ -203,12 +218,13 @@ class SharepointTest extends TestBase
         $this->filesToPurge[] = TEST_FILE_PREFIX . $path;
 
         if (strpos($path, '/')) {
-            $dir = dirname($path);
+            $dir = $path;
             while(dirname($dir) !== '.') {
-                $this->directoriesToPurge[] = $dir;
                 $dir = dirname($dir);
+                $this->directoriesToPurge[] = TEST_FILE_PREFIX . $dir;
             }
         }
+        ray($this->directoriesToPurge);
     }
 
     /**
@@ -231,14 +247,14 @@ class SharepointTest extends TestBase
         // Deleting directories doensnt work.
         // @see https://github.com/bitsnbolts/flysystem-sharepoint/issues/6
 
-        // foreach ($this->directoriesToPurge as $path) {
-        //     try {
-        //         $this->fs->delete($path);
-        //     } catch (\Exception $e) {
-        //         var_dump($e);
-        //         // Do nothing, just continue. We obviously can't clean it
-        //     }
-        // }
-        // $this->directoriesToPurge = [];
+        foreach ($this->directoriesToPurge as $path) {
+            try {
+                $this->fs->delete($path);
+            } catch (\Exception $e) {
+                var_dump($e);
+                // Do nothing, just continue. We obviously can't clean it
+            }
+        }
+        $this->directoriesToPurge = [];
     }
 }

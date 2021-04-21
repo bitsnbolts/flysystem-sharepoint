@@ -6,17 +6,20 @@ use Exception;
 use League\Flysystem\Util;
 use League\Flysystem\Config;
 use Office365\SharePoint\File;
+use Office365\SharePoint\Folder;
 use Office365\SharePoint\ListItem;
-use League\Flysystem\FileNotFoundException;
 use Office365\Runtime\Http\HttpMethod;
+use Office365\SharePoint\ClientContext;
+use Office365\Runtime\Http\RequestOptions;
+use Office365\SharePoint\ListTemplateType;
+use League\Flysystem\FileNotFoundException;
 use Office365\Runtime\Auth\UserCredentials;
 use League\Flysystem\Adapter\AbstractAdapter;
-use Office365\SharePoint\ClientContext;
-use Office365\SharePoint\ListTemplateType;
-use Office365\Runtime\Http\RequestOptions;
-use Office365\SharePoint\ListCreationInformation;
 use Office365\SharePoint\FileCreationInformation;
+use Office365\SharePoint\ListCreationInformation;
 use League\Flysystem\Adapter\Polyfill\NotSupportingVisibilityTrait;
+use Office365\Runtime\Http\RequestException;
+use RuntimeException;
 
 class SharepointAdapter extends AbstractAdapter
 {
@@ -156,10 +159,19 @@ class SharepointAdapter extends AbstractAdapter
     public function delete($path)
     {
         $path = $this->applyPathPrefix($path);
-        $file = $this->getFileByPath($path);
-        $file->recycle();
-        $this->client->executeQuery();
+        if ($this->isFolder($path)) {
+            $folder = $this->getFolderForPath($path, $this->getList($path), false);
+            $folder->recycle();
+        } else {
+            try {
+                $file = $this->getFileByPath($path);
+                $file->recycle();
+            } catch (FileNotFoundException $e) {
+                return true;
+            }
+        }
 
+        $this->client->executeQuery();
         return true;
     }
 
@@ -179,7 +191,13 @@ class SharepointAdapter extends AbstractAdapter
      */
     public function createDir($dirname, Config $config)
     {
-        $this->createList($dirname);
+        if (dirname($dirname) === '.') {
+            $this->createList($dirname);
+        } else {
+            $directories = explode('/', $dirname);
+            $list = $this->getList(array_shift($directories));
+            $this->createFolderInList($list, implode('/', $directories));
+        }
 
         return ['path' => $dirname, 'type' => 'dir'];
     }
@@ -189,8 +207,17 @@ class SharepointAdapter extends AbstractAdapter
      */
     public function has($path)
     {
+        if ($this->isFolder($path)) {
+            try {
+                $this->getFolderForPath($path, $this->getList($path), false, true);
+                return true;
+            } catch (Exception $e) {
+                return false;
+            }
+        }
+
         try {
-            $this->getFileByPath($path);
+            $this->getFileByPath($path, true);
         } catch (FileNotFoundException $e) {
             return false;
         } catch (ListNotFoundException $e) {
@@ -236,11 +263,18 @@ class SharepointAdapter extends AbstractAdapter
         if (count($listing) === 0) {
             return [];
         }
-        $normalizer = [$this, 'normalizeResponse'];
+
+        $listing = $this->showList($directory);
+        $normalizer = [$this, 'normalizeFileResponse'];
         $paths = array_fill(0, count($listing), $directory);
         $normalized = array_map($normalizer, $listing, $paths);
 
-        return Util::emulateDirectories($normalized);
+        $folders = $this->showListFolders($directory);
+        $folderNormalizer = [$this, 'normalizeFolderResponse'];
+        $paths = array_fill(0, count($folders), $directory);
+        $normalizedFolder = array_map($folderNormalizer, $folders, $paths);
+
+        return Util::emulateDirectories(array_merge($normalized, $normalizedFolder));
     }
 
     /**
@@ -252,7 +286,7 @@ class SharepointAdapter extends AbstractAdapter
 
         $file = $this->getFileByPath($path);
 
-        return $this->normalizeResponse($file, dirname($path));
+        return $this->normalizeFileResponse($file, dirname($path));
     }
 
     /**
@@ -305,13 +339,37 @@ class SharepointAdapter extends AbstractAdapter
      *
      * @return array
      */
-    protected function normalizeResponse(File $item, $path = null)
+    protected function normalizeFileResponse(File $item, $path = null)
     {
-        if (substr($path, -1) === '/') {
-            return [
-                'type' => 'dir',
-                'path' => $this->removePathPrefix(rtrim($path, '/'))
-            ];
+        $path = $this->removePathPrefix($path);
+
+        $modified = date_create($item->getTimeLastModified())->format('U');
+        $created = date_create($item->getTimeCreated())->format('U');
+
+        return [
+            'path'       => $path . '/' . $item->getName(),
+            'linkingUrl' => $item->getLinkingUrl(),
+            'timestamp'  => (int) $modified,
+            'created'  => (int) $created,
+            'dirname'    => $path,
+            'mimetype'   => '',
+            'size'       => $item->getLength(),
+            'type'       => 'file',
+        ];
+    }
+
+    /**
+     * Normalize the object result array.
+     *
+     * @param array  $response
+     * @param string $path
+     *
+     * @return array
+     */
+    protected function normalizeFolderResponse(Folder $item, $path = null)
+    {
+        if (in_array($item->getName(), ['Forms'])) {
+            return ['type' => 'other', 'path' => $path];
         }
 
         $path = $this->removePathPrefix($path);
@@ -320,14 +378,13 @@ class SharepointAdapter extends AbstractAdapter
         $created = date_create($item->getTimeCreated())->format('U');
 
         return [
-            'path'       => $item->getName(),
-            'linkingUrl' => $item->getLinkingUrl(),
+            'path'       => $path . '/' . $item->getName(),
             'timestamp'  => (int) $modified,
             'created'  => (int) $created,
             'dirname'    => $path,
             'mimetype'   => '',
-            'size'       => $item->getLength(),
-            'type'       => 'file',
+            'size'       => 0,
+            'type'       => 'dir',
         ];
     }
 
@@ -476,6 +533,18 @@ class SharepointAdapter extends AbstractAdapter
         return $items->getData();
     }
 
+    private function showListFolders($listTitle)
+    {
+        $items = $this->client
+            ->getWeb()
+            ->getFolders()
+            ->getByUrl($listTitle)
+            ->getFolders()
+            ->get()
+            ->executeQuery();
+        return $items->getData();
+    }
+
     private function getList($path)
     {
         // @todo: create a dedicated Path Object.
@@ -506,11 +575,20 @@ class SharepointAdapter extends AbstractAdapter
     private function getFolderTitleForPath($path)
     {
         $parts = explode('/', $path);
-        // @todo: support nested directories.
-        if (count($parts) !== 3) {
-            return false;
+
+        // If the last part cotains a dot, its a file! :)
+        // We dont need files here, so pop it.
+        if (!$this->isFolder(end($parts))) {
+            array_pop($parts);
         }
-        return $parts[1];
+
+        $list = array_shift($parts);
+        return implode('/', $parts);
+    }
+
+    private function isFolder($path)
+    {
+        return strpos($path, '.') === false;
     }
 
     // @todo: I dont like that I have two types of paths in the adapter..
@@ -533,9 +611,9 @@ class SharepointAdapter extends AbstractAdapter
      * @return mixed
      * @throws ListNotFoundException|FileNotFoundException
      */
-    private function getFileByPath($path)
+    private function getFileByPath($path, $fresh = false)
     {
-        if (array_key_exists($path, $this->fileCache)) {
+        if (!$fresh && array_key_exists($path, $this->fileCache)) {
             return $this->fileCache[$path];
         }
         $list = $this->getList($path);
@@ -544,7 +622,11 @@ class SharepointAdapter extends AbstractAdapter
         $filename = $this->getFilenameForPath($path);
         $items->filter('Name eq \'' . $filename . '\'')->top(1);
         $this->client->load($items);
-        $this->client->executeQuery();
+        try {
+            $this->client->executeQuery();
+        } catch (RequestException $e) {
+            throw new FileNotFoundException($path);
+        }
         if ($items->getCount() === 0) {
             throw new FileNotFoundException($path);
         }
@@ -663,7 +745,7 @@ class SharepointAdapter extends AbstractAdapter
      *
      * @return \Office365\SharePoint\Folder
      */
-    private function getFolderForPath($path, $list)
+    private function getFolderForPath($path, $list, $createIfMissing = true, $fresh = false)
     {
         $folderName = $this->getFolderTitleForPath($path);
         $serverRelativeUrl = $list->getProperty('ParentWebUrl')
@@ -671,7 +753,7 @@ class SharepointAdapter extends AbstractAdapter
                                . $list->getProperty('Title')
                                . '/'
                                . $folderName;
-        if (array_key_exists($serverRelativeUrl, $this->folderCache)) {
+        if (!$fresh && array_key_exists($serverRelativeUrl, $this->folderCache)) {
             return $this->folderCache[$serverRelativeUrl];
         }
 
@@ -681,7 +763,11 @@ class SharepointAdapter extends AbstractAdapter
         try {
             $this->client->executeQuery();
         } catch (Exception $e) {
-            $folder = $this->createFolderInList($list, $folderName);
+            if ($createIfMissing) {
+                $folder = $this->createFolderInList($list, $folderName);
+            } else {
+                throw $e;
+            }
         }
 
         $this->folderCache[$serverRelativeUrl] = $folder;
