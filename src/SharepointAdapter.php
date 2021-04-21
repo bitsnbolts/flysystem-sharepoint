@@ -544,10 +544,16 @@ class SharepointAdapter extends AbstractAdapter
 
     private function showListFolders($listTitle)
     {
-        $items = $this->client
-            ->getWeb()
-            ->getFolders()
-            ->getByUrl($listTitle)
+        $items = $this->client->getWeb();
+
+        // get the right list.
+        $folders = explode('/', $listTitle);
+        while($folderName = array_shift($folders)) {
+            $items = $items->getFolders()
+                ->getByUrl($folderName);
+        }
+
+        $items = $items
             ->getFolders()
             ->get()
             ->executeQuery();
@@ -757,6 +763,7 @@ class SharepointAdapter extends AbstractAdapter
     private function getFolderForPath($path, $list, $createIfMissing = true, $fresh = false)
     {
         $folderName = $this->getFolderTitleForPath($path);
+
         $serverRelativeUrl = $list->getProperty('ParentWebUrl')
                                . '/'
                                . $list->getProperty('Title')
@@ -768,6 +775,7 @@ class SharepointAdapter extends AbstractAdapter
 
         $folder = $this->client->getWeb()
                                ->getFolderByServerRelativeUrl($serverRelativeUrl);
+
         $this->client->load($folder);
         try {
             $this->client->executeQuery();

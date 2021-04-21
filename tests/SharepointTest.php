@@ -213,7 +213,7 @@ class SharepointTest extends TestBase
         $this->filesToPurge[] = TEST_FILE_PREFIX . 'testLargeUpload.txt';
 
         // Get the file size
-        $this->assertEquals(30, $this->fs->getSize(TEST_FILE_PREFIX.'testLargeUpload.txt'));
+        $this->assertEquals(50000000, $this->fs->getSize(TEST_FILE_PREFIX.'testLargeUpload.txt'));
     }
 
     protected function createFile($path, $content = '::content::')
@@ -228,7 +228,6 @@ class SharepointTest extends TestBase
                 $this->directoriesToPurge[] = TEST_FILE_PREFIX . $dir;
             }
         }
-        ray($this->directoriesToPurge);
     }
 
     /**
