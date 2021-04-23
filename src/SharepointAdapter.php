@@ -289,8 +289,19 @@ class SharepointAdapter extends AbstractAdapter
         $paths = array_fill(0, count($folders), $directory);
         $normalizedFolder = array_map($folderNormalizer, $folders, $paths);
 
+        $ownContents = array_merge($normalized, $normalizedFolder);
         $dirs = array_filter($normalizedFolder, fn($item) => $item['type'] === 'dir');
-        $nested = array_reduce($dirs, fn($carry, $folder) => $carry[] = $this->getDirectoryContents($folder['path'], true), []);
+
+        $nested = array_reduce($dirs, function($carry, $folder) {
+            $dirContents = $this->getDirectoryContents($folder['path'], true);
+            if (count($dirContents) === 0) {
+                return $carry;
+            }
+            $carry = array_merge($carry, $dirContents);
+            return $carry;
+        }, []);
+
+        $result = array_merge($ownContents, $nested);
 
         return array_merge($normalized, $normalizedFolder, $nested);
     }
