@@ -49,6 +49,35 @@ class SharepointTest extends TestBase
         $this->filesToPurge[] = TEST_FILE_PREFIX . 'testWriteStream.txt';
     }
 
+    public function testRead()
+    {
+        $this->fs->write(TEST_FILE_PREFIX . 'testRead.txt', 'read content');
+        $this->filesToPurge[] = TEST_FILE_PREFIX . 'testRead.txt';
+
+        $this->assertEquals('read content', $this->fs->read(TEST_FILE_PREFIX . 'testRead.txt'));
+    }
+
+    /** @group read */
+    public function testReadInDirectory()
+    {
+        $this->fs->write(TEST_FILE_PREFIX . 'testDir/testReadInDir.txt', 'read content in directory');
+        $this->filesToPurge[] = TEST_FILE_PREFIX . 'testDir/testReadInDir.txt';
+        $this->directoriesToPurge[] = TEST_FILE_PREFIX . 'testDir';
+
+        $this->assertEquals('read content in directory', $this->fs->read(TEST_FILE_PREFIX . 'testDir/testReadInDir.txt'));
+    }
+
+    /** @group word */
+    public function testReadWord()
+    {
+        $path = __DIR__ . '/files/word.docx';
+        $this->fs->writeStream(TEST_FILE_PREFIX . 'testWord.docx', fopen($path, 'r'));
+        $this->filesToPurge[] = TEST_FILE_PREFIX . 'testWord.docx';
+
+        $this->assertNotEmpty($this->fs->read(TEST_FILE_PREFIX . 'testWord.docx'));
+    }
+
+
     public function testDelete()
     {
         // Create file
