@@ -216,6 +216,12 @@ class SharepointTest extends TestBase
         $this->assertEquals(50000000, $this->fs->getSize(TEST_FILE_PREFIX.'testLargeUpload.txt'));
     }
 
+    public function testListContentsForNonExistingDirectoriesReturnAnEmptyArray()
+    {
+        $result = $this->fs->listContents('non-existing-directory');
+        $this->assertEquals([], $result);
+    }
+
     protected function createFile($path, $content = '::content::')
     {
         $this->fs->write(TEST_FILE_PREFIX . $path, $content);
@@ -223,7 +229,7 @@ class SharepointTest extends TestBase
 
         if (strpos($path, '/')) {
             $dir = $path;
-            while(dirname($dir) !== '.') {
+            while (dirname($dir) !== '.') {
                 $dir = dirname($dir);
                 $this->directoriesToPurge[] = TEST_FILE_PREFIX . $dir;
             }

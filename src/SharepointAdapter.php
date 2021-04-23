@@ -260,7 +260,15 @@ class SharepointAdapter extends AbstractAdapter
     public function listContents($directory = '', $recursive = false)
     {
         $directory = $this->applyPathPrefix($directory);
-        $listing = $this->showList($directory);
+        try {
+            $listing = $this->showList($directory);
+        } catch (RequestException $e) {
+            $message = json_decode($e->getMessage());
+            if (strpos($message->error->code, 'System.IO.DirectoryNotFoundException')) {
+                return [];
+            }
+            throw $e;
+        }
 
         if (count($listing) === 0) {
             return [];
@@ -530,7 +538,7 @@ class SharepointAdapter extends AbstractAdapter
 
         // get the right list.
         $folders = explode('/', $listTitle);
-        while($folderName = array_shift($folders)) {
+        while ($folderName = array_shift($folders)) {
             $items = $items->getFolders()
                 ->getByUrl($folderName);
         }
@@ -548,7 +556,7 @@ class SharepointAdapter extends AbstractAdapter
 
         // get the right list.
         $folders = explode('/', $listTitle);
-        while($folderName = array_shift($folders)) {
+        while ($folderName = array_shift($folders)) {
             $items = $items->getFolders()
                 ->getByUrl($folderName);
         }
