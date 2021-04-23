@@ -39,6 +39,17 @@ class SharepointTest extends TestBase
         $this->directoriesToPurge[] = TEST_FILE_PREFIX . 'testDir';
     }
 
+    /** @group nest */
+    public function testWriteToNestedDirectory()
+    {
+        $this->markTestSkipped('This does not work yet');
+
+        $this->assertEquals(true, $this->fs->write(TEST_FILE_PREFIX . 'testDir/nested/testWriteInDir.txt', 'testing'));
+        $this->filesToPurge[] = TEST_FILE_PREFIX . 'testDir/testWriteInDir.txt';
+        $this->directoriesToPurge[] = TEST_FILE_PREFIX . 'testDir/nested';
+        $this->directoriesToPurge[] = TEST_FILE_PREFIX . 'testDir';
+    }
+
     public function testWriteStream()
     {
         $stream = fopen('php://temp', 'w+b');
@@ -140,7 +151,6 @@ class SharepointTest extends TestBase
         $this->assertEquals('second.txt', $second['basename']);
     }
 
-    /** @group foo */
     public function testListContentsContainsDirectories()
     {
         // Create files
@@ -170,6 +180,26 @@ class SharepointTest extends TestBase
             $this->fail($e->getMessage());
         }
     }
+
+    /** @group rec */
+    public function testListContentsRecursive()
+    {
+        // Create files
+        $this->createFile('1-root-first.txt');
+        $this->createFile('2-list-recursive/3-recursive-first.txt');
+        $this->createDir('4-empty-dir');
+
+        // More then one level fails ATM.
+        // $this->createFile('list-recursive/nested/recursive-second.txt');
+
+        [$first, $directory, $nested, $emptyDir] = $this->fs->listContents(TEST_FILE_PREFIX, true);
+
+        $this->assertEquals('1-root-first.txt', $first['basename']);
+        $this->assertEquals('2-list-recursive', $directory['basename']);
+        $this->assertEquals('3-recursive-first.txt', $nested['basename']);
+        $this->assertEquals('4-empty-dir', $emptyDir['basename']);
+    }
+
 
 
     public function testGetUrl()
@@ -263,6 +293,12 @@ class SharepointTest extends TestBase
                 $this->directoriesToPurge[] = TEST_FILE_PREFIX . $dir;
             }
         }
+    }
+
+    public function createDir($path)
+    {
+        $this->fs->createDir(TEST_FILE_PREFIX . $path);
+        $this->directoriesToPurge[] = TEST_FILE_PREFIX . $path;
     }
 
     /**

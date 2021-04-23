@@ -1,4 +1,5 @@
 .phpintel
 .idea
 .phpunit.result.cache
+.DS_Store
 vendor

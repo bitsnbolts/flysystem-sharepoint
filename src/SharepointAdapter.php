@@ -259,6 +259,12 @@ class SharepointAdapter extends AbstractAdapter
      */
     public function listContents($directory = '', $recursive = false)
     {
+        $result = $this->getDirectoryContents($directory);
+        return Util::emulateDirectories($result);
+    }
+
+    protected function getDirectoryContents($directory)
+    {
         $directory = $this->applyPathPrefix($directory);
         try {
             $listing = $this->showList($directory);
@@ -283,9 +289,10 @@ class SharepointAdapter extends AbstractAdapter
         $paths = array_fill(0, count($folders), $directory);
         $normalizedFolder = array_map($folderNormalizer, $folders, $paths);
 
-        $result = array_merge($normalized, $normalizedFolder);
+        $dirs = array_filter($normalizedFolder, fn($item) => $item['type'] === 'dir');
+        $nested = array_reduce($dirs, fn($carry, $folder) => $carry[] = $this->getDirectoryContents($folder['path'], true), []);
 
-        return Util::emulateDirectories($result);
+        return array_merge($normalized, $normalizedFolder, $nested);
     }
 
     /**
