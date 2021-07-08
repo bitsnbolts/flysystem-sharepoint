@@ -136,9 +136,10 @@ class SharepointAdapter extends AbstractAdapter
             return $file->getLinkingUri();
         }
 
-        $base = $file->getContext()->getBaseUrl();
-        $relativeUrl = substr($file->getServerRelativeUrl(), strlen(parse_url($base)['path']));
-        return $base . $relativeUrl;
+        $listItem = $file->getListItemAllFields();
+        $this->client->load($listItem,['EncodedAbsUrl']);
+        $this->client->executeQuery();
+        return $listItem->getProperty('EncodedAbsUrl');
     }
 
     public function copy($path, $newpath)
