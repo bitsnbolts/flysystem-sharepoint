@@ -137,7 +137,7 @@ class SharepointAdapter extends AbstractAdapter
         }
 
         $listItem = $file->getListItemAllFields();
-        $this->client->load($listItem,['EncodedAbsUrl']);
+        $this->client->load($listItem, ['EncodedAbsUrl']);
         $this->client->executeQuery();
         return $listItem->getProperty('EncodedAbsUrl');
     }
@@ -291,9 +291,9 @@ class SharepointAdapter extends AbstractAdapter
         $normalizedFolder = array_map($folderNormalizer, $folders, $paths);
 
         $ownContents = array_merge($normalized, $normalizedFolder);
-        $dirs = array_filter($normalizedFolder, fn($item) => $item['type'] === 'dir');
+        $dirs = array_filter($normalizedFolder, fn ($item) => $item['type'] === 'dir');
 
-        $nested = array_reduce($dirs, function($carry, $folder) {
+        $nested = array_reduce($dirs, function ($carry, $folder) {
             $dirContents = $this->getDirectoryContents($folder['path'], true);
             if (count($dirContents) === 0) {
                 return $carry;
@@ -658,6 +658,8 @@ class SharepointAdapter extends AbstractAdapter
         if (!$fresh && array_key_exists($path, $this->fileCache)) {
             return $this->fileCache[$path];
         }
+        // This can probably be done way easier by using getFileByServerRelativePath
+        /// see https://github.com/vgrem/phpSPO/issues/238#issuecomment-844634091
         $list = $this->getList($path);
         $folder = $this->getFolderForPath($path, $list);
         $items = $folder->getFiles();
