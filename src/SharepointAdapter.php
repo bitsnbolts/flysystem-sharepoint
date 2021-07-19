@@ -3,6 +3,7 @@
 namespace BitsnBolts\Flysystem\Sharepoint;
 
 use Exception;
+use RuntimeException;
 use League\Flysystem\Util;
 use League\Flysystem\Config;
 use Office365\SharePoint\File;
@@ -10,16 +11,16 @@ use Office365\SharePoint\Folder;
 use Office365\SharePoint\ListItem;
 use Office365\Runtime\Http\HttpMethod;
 use Office365\SharePoint\ClientContext;
+use Office365\SharePoint\SPResourcePath;
 use Office365\Runtime\Http\RequestOptions;
 use Office365\SharePoint\ListTemplateType;
 use League\Flysystem\FileNotFoundException;
 use Office365\Runtime\Auth\UserCredentials;
+use Office365\Runtime\Http\RequestException;
 use League\Flysystem\Adapter\AbstractAdapter;
 use Office365\SharePoint\FileCreationInformation;
 use Office365\SharePoint\ListCreationInformation;
 use League\Flysystem\Adapter\Polyfill\NotSupportingVisibilityTrait;
-use Office365\Runtime\Http\RequestException;
-use RuntimeException;
 
 class SharepointAdapter extends AbstractAdapter
 {
@@ -658,31 +659,22 @@ class SharepointAdapter extends AbstractAdapter
         if (!$fresh && array_key_exists($path, $this->fileCache)) {
             return $this->fileCache[$path];
         }
-        // This can probably be done way easier by using getFileByServerRelativePath
-        /// see https://github.com/vgrem/phpSPO/issues/238#issuecomment-844634091
-        $list = $this->getList($path);
-        $folder = $this->getFolderForPath($path, $list);
-        $items = $folder->getFiles();
-        $filename = $this->getFilenameForPath($path);
-        $items->filter('Name eq \'' . $filename . '\'')->top(1);
-        $this->client->load($items);
-        try {
-            $this->client->executeQuery();
-        } catch (RequestException $e) {
+
+        $file = $this->client->getWeb()->getFileByServerRelativePath(new SPResourcePath($this->getRelativeUrlForPath($path)));
+        $listItem = $file->getListItemAllFields();
+        $this->client->load($listItem);
+        $this->client->executeQuery();
+
+        if (!$listItem->getId()) {
             throw new FileNotFoundException($path);
         }
-        if ($items->getCount() === 0) {
-            throw new FileNotFoundException($path);
-        }
-        $file = $items->getItem(0);
-        $this->client->load($file);
-        try {
-            $this->client->executeQuery();
-        } catch (Exception $exception) {
-            throw new FileNotFoundException($path);
-        }
-        $this->fileCache[$path] = $file;
-        return $file;
+
+        $targetFile = $listItem->getFile();
+        $this->client->load($targetFile);
+        $this->client->executeQuery();
+
+        $this->fileCache[$path] = $targetFile;
+        return $targetFile;
     }
 
     /**
@@ -781,6 +773,12 @@ class SharepointAdapter extends AbstractAdapter
         $childFolder = $parentFolder->getFolders()->add($folderName);
         $this->client->executeQuery();
         return $childFolder;
+    }
+
+    private function getRelativeUrlForPath($path)
+    {
+        $prefix = parse_url($this->settings['url'])['path'];
+        return $prefix . '/' . $path;
     }
 
     /**
