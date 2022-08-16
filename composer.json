@@ -10,12 +10,13 @@
     ],
     "require": {
         "php": "^7.4|^8.0",
-        "league/flysystem": "~1.0",
-        "vgrem/php-spo": "dev-master#aa3ee4c20aa65acac46e02d3af32cd6b17038fb4 as 2.4.4"
+        "league/flysystem": "^3.0",
+        "vgrem/php-spo": "^2.5.4"
     },
     "require-dev": {
         "phpunit/phpunit": "^9.3.3",
-        "spatie/ray": "^1.21"
+        "spatie/ray": "^1.21",
+        "league/flysystem-adapter-test-utilities": "^3.1"
     },
     "autoload": {
         "psr-4": {
