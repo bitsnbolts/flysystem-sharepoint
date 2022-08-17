@@ -684,7 +684,7 @@ class SharepointAdapter implements FilesystemAdapter
      * @param $path
      *
      * @return mixed
-     * @throws ListNotFoundException|FileNotFoundException
+     * @throws UnableToReadFile
      */
     private function getFileByPath($path, $fresh = false)
     {
@@ -777,7 +777,7 @@ class SharepointAdapter implements FilesystemAdapter
     {
         try {
             $list = $this->getList($path);
-        } catch (ListNotFoundException $e) {
+        } catch (UnableToReadFile $e) {
             $list = $this->createList($this->getListTitleForPath($path));
         }
         $folder = $this->getFolderForPath($path, $list);
