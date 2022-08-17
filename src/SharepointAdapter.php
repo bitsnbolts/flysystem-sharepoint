@@ -3,114 +3,291 @@
 namespace BitsnBolts\Flysystem\Sharepoint;
 
 use Exception;
-use League\Flysystem\Util;
+use League\Flysystem\DirectoryAttributes;
+use League\Flysystem\FileAttributes;
+use League\Flysystem\FilesystemAdapter;
+use League\Flysystem\PathPrefixer;
 use League\Flysystem\Config;
+use League\Flysystem\StorageAttributes;
+use League\Flysystem\UnableToReadFile;
+use League\Flysystem\UnableToRetrieveMetadata;
+use League\Flysystem\UnableToSetVisibility;
 use Office365\SharePoint\File;
 use Office365\SharePoint\Folder;
-use Office365\SharePoint\ListItem;
 use Office365\Runtime\Http\HttpMethod;
 use Office365\SharePoint\ClientContext;
 use Office365\Runtime\Http\RequestOptions;
 use Office365\SharePoint\ListTemplateType;
-use League\Flysystem\FileNotFoundException;
 use Office365\Runtime\Auth\UserCredentials;
-use League\Flysystem\Adapter\AbstractAdapter;
 use Office365\SharePoint\FileCreationInformation;
 use Office365\SharePoint\ListCreationInformation;
-use League\Flysystem\Adapter\Polyfill\NotSupportingVisibilityTrait;
 use Office365\Runtime\Http\RequestException;
-use RuntimeException;
+use Office365\SharePoint\SPResourcePath;
 
-class SharepointAdapter extends AbstractAdapter
+class SharepointAdapter implements FilesystemAdapter
 {
-    use NotSupportingVisibilityTrait;
+    protected ClientContext $client;
 
-    /**
-     * @var ClientContext
-     */
-    protected $client;
+    protected UserCredentials $auth;
 
-    /**
-     * @var UserCredentials
-     */
-    protected $auth;
+    protected array $settings;
 
-    /**
-     * @var array
-     */
-    protected $settings;
+    private PathPrefixer $prefixer;
 
-    protected $fileCache = [];
-    protected $listCache = [];
-    protected $folderCache = [];
+    protected array $fileCache = [];
+    protected array $listCache = [];
+    protected array $folderCache = [];
 
     /**
      * @var string[]
      */
-    protected static $metaOptions
-        = [
+    private const META_OPTIONS = [
             'CacheControl',
             'ContentType',
             'Metadata',
             'ContentLanguage',
             'ContentEncoding',
-        ];
+    ];
 
-    /**
-     * Constructor.
-     *
-     * @param ClientContext $sharepointClient
-     * @param string        $prefix
-     */
-    public function __construct($settings, $prefix = null)
+    public function __construct(array $settings, string $prefix = '')
     {
         $this->settings = $settings;
         $this->authorize();
         $this->setupClient();
-        $this->setPathPrefix($prefix);
+        $this->prefixer = new PathPrefixer($prefix);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function write($path, $contents, Config $config)
+    public function getClient(): ClientContext
     {
-        return $this->upload($path, $contents, $config);
+        return $this->client;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function writeStream($path, $resource, Config $config)
+    public function fileExists(string $path): bool
     {
-        return $this->upload($path, stream_get_contents($resource), $config);
-    }
+        $path = $this->prefixer->prefixPath($path);
+        try {
+            $this->getFileByPath($path, true);
+        } catch (UnableToReadFile $e) {
+            return false;
+        }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function update($path, $contents, Config $config)
-    {
-        return $this->upload($path, $contents, $config);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function updateStream($path, $resource, Config $config)
-    {
-        return $this->upload($path, stream_get_contents($resource), $config);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function rename($path, $newpath)
-    {
-        $file = $this->getFileByPath($path);
-        $file->moveTo($newpath, 1);
-        $this->client->executeQuery();
         return true;
+    }
+
+    public function directoryExists(string $path): bool
+    {
+        $path = $this->prefixer->prefixDirectoryPath($path);
+        try {
+            $this->getFolderForPath($path, $this->getList($path), false, true);
+        } catch (Exception $e) {
+            return false;
+        }
+        return true;
+    }
+
+    public function write(string $path, string $contents, Config $config): void
+    {
+        $this->upload($path, $contents, $config);
+    }
+
+    public function writeStream(string $path, $contents, Config $config): void
+    {
+        $this->upload($path, stream_get_contents($contents), $config);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function read(string $path): string
+    {
+        $path = $this->prefixer->prefixPath($path);
+        $file = $this->getFileByPath($path);
+        $fileContent = File::openBinary(
+            $this->client,
+            $file->getProperty('ServerRelativeUrl')
+        );
+        return $fileContent;
+        return $response;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function readStream($path)
+    {
+        $path = $this->prefixer->prefixPath($path);
+        $file = $this->getFileByPath($path);
+        $fileName = implode(DIRECTORY_SEPARATOR, [sys_get_temp_dir(), $file->getName()]);
+        $fh = fopen($fileName, 'w+');
+        return $file->download($fh);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function delete(string $path): void
+    {
+        $path = $this->prefixer->prefixPath($path);
+
+        if ($this->isFolder($path)) {
+            $folder = $this->getFolderForPath($path, $this->getList($path), false, true);
+            $folder->recycle();
+        } else {
+            try {
+                $file = $this->getFileByPath($path, true);
+                $file->recycle();
+            } catch (FileNotFoundException $e) {
+                throw UnableToDeleteFile::atLocation($path, $e->getMessage(), $e);
+            }
+        }
+
+        $this->client->executeQuery();
+    }
+
+    public function deleteDirectory(string $path): void
+    {
+        $this->delete($path);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function createDirectory(string $path, Config $config): void
+    {
+        $path = $this->prefixer->prefixDirectoryPath($path);
+        if (dirname($path) === '.') {
+            $this->createList($path);
+        } else {
+            $directories = explode('/', $path);
+            $list = $this->getList(array_shift($directories));
+            $this->createFolderInList($list, implode('/', $directories));
+        }
+    }
+
+    public function setVisibility(string $path, string $visibility): void
+    {
+        throw UnableToSetVisibility::atLocation($path, 'Adapter does not support visibility controls.');
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function visibility(string $path): FileAttributes
+    {
+        // Noop
+        return new FileAttributes($path);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function mimeType(string $path): FileAttributes
+    {
+        return $this->getMetadata($path);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function lastModified(string $path): FileAttributes
+    {
+        return $this->getMetadata($path);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function fileSize(string $path): FileAttributes
+    {
+        return $this->getMetadata($path);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function listContents(string $path, bool $deep): iterable
+    {
+        foreach ($this->iterateFolderContents($path, $deep) as $entry) {
+            $storageAttrs = $this->normalizeResponse($entry);
+
+            // Avoid including the base directory itself
+            if ($storageAttrs->isDir() && $storageAttrs->path() === $path) {
+                continue;
+            }
+
+            yield $storageAttrs;
+        }
+    }
+
+    protected function normalizeResponse($response): StorageAttributes
+    {
+        return match(get_class($response)) {
+            File::class => $this->normalizeFileResponse($response),
+            Folder::class => $this->normalizeFolderResponse($response)
+        };
+    }
+
+    protected function iterateFolderContents(string $path = '', bool $deep = false): \Generator
+    {
+        $location = $this->prefixer->prefixDirectoryPath($path);
+        try {
+            $listing = $this->showList($location);
+        } catch (RequestException $e) {
+            $message = json_decode($e->getMessage());
+            if (strpos($message->error->code, 'System.IO.DirectoryNotFoundException')) {
+                return [];
+            }
+            throw $e;
+        }
+
+        yield from $listing;
+
+        try {
+            $folders = $this->showListFolders($location);
+        } catch (RequestException $e) {
+            $message = json_decode($e->getMessage());
+            if (strpos($message->error->code, 'System.IO.DirectoryNotFoundException')) {
+                return [];
+            }
+            throw $e;
+        }
+
+        $folders = array_filter($folders, fn($folder) => $folder->getName() !== 'Forms');
+        yield from $folders;
+
+        if ($deep) {
+            foreach ($folders as $folder) {
+                try {
+                    $listing = $this->showList($location . $folder->getName());
+                } catch (RequestException $e) {
+                    $message = json_decode($e->getMessage());
+                    if (strpos($message->error->code, 'System.IO.DirectoryNotFoundException')) {
+                        return [];
+                    }
+                    throw $e;
+                }
+
+                yield from $listing;
+            }
+        }
+    }
+
+
+    public function move(string $source, string $destination, Config $config): void {
+        $file = $this->getFileByPath($source);
+        $file->moveTo($destination, 1);
+        $this->client->executeQuery();
+    }
+
+    public function copy(string $source, string $destination, Config $config): void
+    {
+        $path = $this->prefixer->prefixPath($source);
+        $newpath = $this->prefixer->prefixPath($destination);
+
+        // @todo.
+//        $file = $this->getFileByPath($path);
+//        $file->moveTo($newpath);
+//        $this->client->executeQuery();
     }
 
     /**
@@ -123,14 +300,14 @@ class SharepointAdapter extends AbstractAdapter
      * The path of the file
      *
      * @return string The server relative url for this file
-     * @throws FileNotFoundException|ListNotFoundException
+     * @throws UnableToReadFile
      */
     public function getUrl($path)
     {
-        $path = $this->applyPathPrefix($path);
+        $path = $this->prefixer->prefixPath($path);
         $file = $this->getFileByPath($path);
         if (!$file) {
-            throw new FileNotFoundException($path);
+            throw UnableToReadFile::fromLocation($path);
         }
         if ($file->getLinkingUri()) {
             return $file->getLinkingUri();
@@ -142,131 +319,9 @@ class SharepointAdapter extends AbstractAdapter
         return $listItem->getProperty('EncodedAbsUrl');
     }
 
-    public function copy($path, $newpath)
+    protected function getDirectoryContents(string $directory, bool $deep)
     {
-        $path = $this->applyPathPrefix($path);
-        $newpath = $this->applyPathPrefix($newpath);
-
-        // @todo.
-//        $file = $this->getFileByPath($path);
-//        $file->moveTo($newpath);
-//        $this->client->executeQuery();
-        return true;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function delete($path)
-    {
-        $path = $this->applyPathPrefix($path);
-
-        if ($this->isFolder($path)) {
-            $folder = $this->getFolderForPath($path, $this->getList($path), false, true);
-            $folder->recycle();
-        } else {
-            try {
-                $file = $this->getFileByPath($path, true);
-                $file->recycle();
-            } catch (FileNotFoundException $e) {
-                return true;
-            }
-        }
-
-        $this->client->executeQuery();
-        return true;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function deleteDir($dirname)
-    {
-        $dirname = $this->applyPathPrefix($dirname);
-
-        // @todo: implement the deleteDir action.
-        return true;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function createDir($dirname, Config $config)
-    {
-        if (dirname($dirname) === '.') {
-            $this->createList($dirname);
-        } else {
-            $directories = explode('/', $dirname);
-            $list = $this->getList(array_shift($directories));
-            $this->createFolderInList($list, implode('/', $directories));
-        }
-
-        return ['path' => $dirname, 'type' => 'dir'];
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function has($path)
-    {
-        if ($this->isFolder($path)) {
-            try {
-                $this->getFolderForPath($path, $this->getList($path), false, true);
-                return true;
-            } catch (Exception $e) {
-                return false;
-            }
-        }
-
-        try {
-            $this->getFileByPath($path, true);
-        } catch (FileNotFoundException $e) {
-            return false;
-        } catch (ListNotFoundException $e) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function read($path)
-    {
-        $path = $this->applyPathPrefix($path);
-        $file = $this->getFileByPath($path);
-        $fileContent = File::openBinary(
-            $this->client,
-            $file->getProperty('ServerRelativeUrl')
-        );
-        $response = array('contents' => $fileContent);
-
-        return $response;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function readStream($path)
-    {
-        $path = $this->applyPathPrefix($path);
-
-        // @todo
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function listContents($directory = '', $recursive = false)
-    {
-        $result = $this->getDirectoryContents($directory);
-        return Util::emulateDirectories($result);
-    }
-
-    protected function getDirectoryContents($directory)
-    {
-        $directory = $this->applyPathPrefix($directory);
+        $directory = $this->prefixer->prefixDirectoryPath($directory);
         try {
             $listing = $this->showList($directory);
         } catch (RequestException $e) {
@@ -286,23 +341,25 @@ class SharepointAdapter extends AbstractAdapter
         $normalized = array_map($normalizer, $listing, $paths);
 
         $folders = $this->showListFolders($directory);
+        $folders = array_filter($folders, fn($folder) => $folder->getName() !== 'Forms');
+
         $folderNormalizer = [$this, 'normalizeFolderResponse'];
         $paths = array_fill(0, count($folders), $directory);
         $normalizedFolder = array_map($folderNormalizer, $folders, $paths);
 
-        $ownContents = array_merge($normalized, $normalizedFolder);
-        $dirs = array_filter($normalizedFolder, fn ($item) => $item['type'] === 'dir');
+        $dirs = array_filter($normalizedFolder, fn ($item) => $item->extraMetadata()['type'] === 'dir');
 
-        $nested = array_reduce($dirs, function ($carry, $folder) {
-            $dirContents = $this->getDirectoryContents($folder['path'], true);
-            if (count($dirContents) === 0) {
+        $nested = [];
+        if ($deep) {
+            $nested = array_reduce($dirs, function ($carry, $folder) {
+                $dirContents = $this->getDirectoryContents($folder['path'], true);
+                if (count($dirContents) === 0) {
+                    return $carry;
+                }
+                $carry = array_merge($carry, $dirContents);
                 return $carry;
-            }
-            $carry = array_merge($carry, $dirContents);
-            return $carry;
-        }, []);
-
-        $result = array_merge($ownContents, $nested);
+            }, []);
+        }
 
         return array_merge($normalized, $normalizedFolder, $nested);
     }
@@ -310,37 +367,17 @@ class SharepointAdapter extends AbstractAdapter
     /**
      * {@inheritdoc}
      */
-    public function getMetadata($path)
+    public function getMetadata($path): FileAttributes|array
     {
-        $path = $this->applyPathPrefix($path);
+        $path = $this->prefixer->prefixPath($path);
 
-        $file = $this->getFileByPath($path);
+        try {
+            $file = $this->getFileByPath($path);
+        } catch (UnableToReadFile $e) {
+            throw UnableToRetrieveMetadata::fileSize($path, $e->getMessage());
+        }
 
         return $this->normalizeFileResponse($file, dirname($path));
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getSize($path)
-    {
-        return $this->getMetadata($path);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getMimetype($path)
-    {
-        return $this->getMetadata($path);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getVisibility($path)
-    {
-        // TODO: Implement getVisibility() method.
     }
 
     public function grantUserAccessToPath($loginName, $path)
@@ -354,14 +391,6 @@ class SharepointAdapter extends AbstractAdapter
     }
 
     /**
-     * {@inheritdoc}
-     */
-    public function getTimestamp($path)
-    {
-        return $this->getMetadata($path);
-    }
-
-    /**
      * Normalize the object result array.
      *
      * @param array  $response
@@ -369,53 +398,57 @@ class SharepointAdapter extends AbstractAdapter
      *
      * @return array
      */
-    protected function normalizeFileResponse(File $item, $path = null)
+    protected function normalizeFileResponse(File $item): FileAttributes
     {
-        $path = $this->removePathPrefix($path);
-
         $modified = date_create($item->getTimeLastModified())->format('U');
         $created = date_create($item->getTimeCreated())->format('U');
-
-        return [
-            'path'       => $path . '/' . $item->getName(),
-            'linkingUrl' => $item->getLinkingUrl(),
-            'timestamp'  => (int) $modified,
-            'created'  => (int) $created,
-            'dirname'    => $path,
-            'mimetype'   => '',
-            'size'       => $item->getLength(),
-            'type'       => 'file',
-        ];
+        $path = str_replace(parse_url($this->client->getBaseUrl())['path'], '', $item->getServerRelativeUrl());
+        $path = $this->prefixer->stripDirectoryPrefix($path);
+        return new FileAttributes(
+            $path,
+            $item->getLength(),
+           null,
+            (int) $modified,
+            '',
+            [
+                'linkingUrl' => $item->getLinkingUrl(),
+                'created'  => (int) $created,
+                'type'       => 'file'
+            ]
+        );
     }
 
     /**
      * Normalize the object result array.
      *
      * @param array  $response
-     * @param string $path
      *
      * @return array
      */
-    protected function normalizeFolderResponse(Folder $item, $path = null)
+    protected function normalizeFolderResponse(Folder $item): DirectoryAttributes
     {
         if (in_array($item->getName(), ['Forms'])) {
-            return ['type' => 'other', 'path' => $path];
+            return new DirectoryAttributes('', null, null, ['type' => 'other']);
         }
 
-        $path = $this->removePathPrefix($path);
+        $path = str_replace(parse_url($this->client->getBaseUrl())['path'], '', $item->getServerRelativeUrl());
+        $path = $this->prefixer->stripDirectoryPrefix($path);
 
         $modified = date_create($item->getTimeLastModified())->format('U');
         $created = date_create($item->getTimeCreated())->format('U');
 
-        return [
-            'path'       => $path . '/' . $item->getName(),
-            'timestamp'  => (int) $modified,
-            'created'  => (int) $created,
-            'dirname'    => $path,
-            'mimetype'   => '',
-            'size'       => 0,
-            'type'       => 'dir',
-        ];
+        return new DirectoryAttributes(
+            $path,
+            null,
+            (int) $modified,
+            [
+                'created'  => (int) $created,
+                'dirname'    => $path,
+                'mimetype'   => '',
+                'size'       => 0,
+                'type'       => 'dir',
+            ]
+        );
     }
 
     /**
@@ -432,7 +465,7 @@ class SharepointAdapter extends AbstractAdapter
         $data = [
             'path'      => $path,
             'timestamp' => (int)$timestamp,
-            'dirname'   => Util::dirname($path),
+            'dirname'   => $path,
             'type'      => 'file',
         ];
 
@@ -458,16 +491,16 @@ class SharepointAdapter extends AbstractAdapter
         if (substr($path, -1) === '/') {
             return [
                 'type' => 'dir',
-                'path' => $this->removePathPrefix(rtrim($path, '/'))
+                'path' => $this->prefixer->stripPrefix(rtrim($path, '/'))
             ];
         }
 
-        $path = $this->removePathPrefix($path);
+        $path = $this->prefixer->stripPrefix($path);
 
         return [
             'path'      => $path,
             'timestamp' => (int)$properties->getLastModified()->format('U'),
-            'dirname'   => Util::dirname($path),
+            'dirname'   => $path,
             'mimetype'  => $properties->getContentType(),
             'size'      => $properties->getContentLength(),
             'type'      => 'file',
@@ -485,7 +518,7 @@ class SharepointAdapter extends AbstractAdapter
     {
         return [
             'type' => 'dir',
-            'path' => $this->removePathPrefix(rtrim(
+            'path' => $this->prefixer->stripPrefix(rtrim(
                 $blobPrefix->getName(),
                 '/'
             ))
@@ -515,7 +548,7 @@ class SharepointAdapter extends AbstractAdapter
      */
     protected function upload($path, $contents, Config $config)
     {
-        $path = $this->applyPathPrefix($path);
+        $path = $this->prefixer->prefixPath($path);
         $result = $this->addFileToList($path, $contents);
         $modified = date_create($result->getTimeLastModified())->format('U');
 
@@ -601,7 +634,7 @@ class SharepointAdapter extends AbstractAdapter
         $this->client->load($lists);
         $this->client->executeQuery();
         if ($lists->getCount() === 0) {
-            throw new ListNotFoundException();
+            throw UnableToReadFile::fromLocation($path);
         }
 
         $list = $lists->getItem(0);
@@ -632,9 +665,9 @@ class SharepointAdapter extends AbstractAdapter
     {
         return strpos($path, '.') === false;
     }
-
     // @todo: I dont like that I have two types of paths in the adapter..
     // @todo: pick one?
+
     private function getListTitleForGroupPath($path)
     {
         $parts = explode('/', $path);
@@ -658,31 +691,22 @@ class SharepointAdapter extends AbstractAdapter
         if (!$fresh && array_key_exists($path, $this->fileCache)) {
             return $this->fileCache[$path];
         }
-        // This can probably be done way easier by using getFileByServerRelativePath
-        /// see https://github.com/vgrem/phpSPO/issues/238#issuecomment-844634091
-        $list = $this->getList($path);
-        $folder = $this->getFolderForPath($path, $list);
-        $items = $folder->getFiles();
-        $filename = $this->getFilenameForPath($path);
-        $items->filter('Name eq \'' . $filename . '\'')->top(1);
-        $this->client->load($items);
+
+        $targetFile = $this->client->getWeb()->getFileByServerRelativePath($this->toRelativePath($path));
+        $this->client->load($targetFile);
         try {
             $this->client->executeQuery();
         } catch (RequestException $e) {
-            throw new FileNotFoundException($path);
+            throw UnableToReadFile::fromLocation($path);
         }
-        if ($items->getCount() === 0) {
-            throw new FileNotFoundException($path);
-        }
-        $file = $items->getItem(0);
-        $this->client->load($file);
-        try {
-            $this->client->executeQuery();
-        } catch (Exception $exception) {
-            throw new FileNotFoundException($path);
-        }
-        $this->fileCache[$path] = $file;
-        return $file;
+        $this->fileCache[$path] = $targetFile;
+        return $targetFile;
+    }
+
+    private function toRelativePath(string $path)
+    {
+        $serverRelativePath = parse_url($this->client->getBaseUrl())['path'] . '/' . $path;
+        return new SPResourcePath($serverRelativePath);
     }
 
     /**

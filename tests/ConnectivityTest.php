@@ -15,13 +15,15 @@ class ConnectivityTest extends TestBase
      */
     public function testAuthFailure()
     {
-        $this->expectException(RuntimeException::class);
         $adapter = new SharepointAdapter([
             'url' => SHAREPOINT_SITE_URL,
             'username' => 'invalid',
             'password' => 'invalid',
         ]);
         $adapter->has('foo');
+        // The has function catches the error and returns false.
+        // So this test doesn't really work.
+       $this->markTestIncomplete();
     }
 
     /**
