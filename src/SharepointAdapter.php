@@ -221,7 +221,7 @@ class SharepointAdapter implements FilesystemAdapter
 
     protected function normalizeResponse($response): StorageAttributes
     {
-        return match(get_class($response)) {
+        return match (get_class($response)) {
             File::class => $this->normalizeFileResponse($response),
             Folder::class => $this->normalizeFolderResponse($response)
         };
@@ -252,7 +252,7 @@ class SharepointAdapter implements FilesystemAdapter
             throw $e;
         }
 
-        $folders = array_filter($folders, fn($folder) => $folder->getName() !== 'Forms');
+        $folders = array_filter($folders, fn ($folder) => $folder->getName() !== 'Forms');
         yield from $folders;
 
         if ($deep) {
@@ -273,7 +273,8 @@ class SharepointAdapter implements FilesystemAdapter
     }
 
 
-    public function move(string $source, string $destination, Config $config): void {
+    public function move(string $source, string $destination, Config $config): void
+    {
         $file = $this->getFileByPath($source);
         $file->moveTo($destination, 1);
         $this->client->executeQuery();
@@ -341,7 +342,7 @@ class SharepointAdapter implements FilesystemAdapter
         $normalized = array_map($normalizer, $listing, $paths);
 
         $folders = $this->showListFolders($directory);
-        $folders = array_filter($folders, fn($folder) => $folder->getName() !== 'Forms');
+        $folders = array_filter($folders, fn ($folder) => $folder->getName() !== 'Forms');
 
         $folderNormalizer = [$this, 'normalizeFolderResponse'];
         $paths = array_fill(0, count($folders), $directory);
@@ -407,7 +408,7 @@ class SharepointAdapter implements FilesystemAdapter
         return new FileAttributes(
             $path,
             $item->getLength(),
-           null,
+            null,
             (int) $modified,
             '',
             [
@@ -735,7 +736,7 @@ class SharepointAdapter implements FilesystemAdapter
         $user = $this->getUserByLoginName($loginName);
         $role = $this->getContributorRole();
         $url = $this->settings['url']
-               . "/_api/web/lists/getbytitle('{$listTitle}')/roleassignments/addroleassignment(principalid={$user->Id},roledefid={$role->Id})";
+               . "/_api/web/lists/getbytitle('{$listTitle}')/roleassignments/addroleassignment(principalid={$user->getId()},roledefid={$role->getId()})";
 
         return $url; //     $request = new \Office365\Runtime\Utilities\RequestOptions($fullUrl, null, null, HttpMethod::Post);
     }
