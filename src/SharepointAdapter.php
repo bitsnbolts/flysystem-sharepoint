@@ -689,6 +689,7 @@ class SharepointAdapter implements FilesystemAdapter
      */
     private function getFileByPath($path, $fresh = false)
     {
+        $path = str_replace("'", "''", $path);
         if (!$fresh && array_key_exists($path, $this->fileCache)) {
             return $this->fileCache[$path];
         }
@@ -698,7 +699,7 @@ class SharepointAdapter implements FilesystemAdapter
         try {
             $this->client->executeQuery();
         } catch (RequestException $e) {
-            throw UnableToReadFile::fromLocation($path);
+            throw UnableToReadFile::fromLocation(str_replace("''", "'", $path));
         }
         $this->fileCache[$path] = $targetFile;
         return $targetFile;
