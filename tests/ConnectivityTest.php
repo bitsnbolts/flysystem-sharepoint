@@ -20,7 +20,7 @@ class ConnectivityTest extends TestBase
             'username' => 'invalid',
             'password' => 'invalid',
         ]);
-        $adapter->has('foo');
+        $adapter->fileExists('foo');
         // The has function catches the error and returns false.
         // So this test doesn't really work.
        $this->markTestIncomplete();
@@ -55,6 +55,6 @@ class ConnectivityTest extends TestBase
             'username' => SHAREPOINT_USERNAME,
             'password' => SHAREPOINT_PASSWORD,
         ]);
-        $this->assertFalse($adapter->has('path_that_doesnt_exist'));
+        $this->assertFalse($adapter->fileExists('path_that_doesnt_exist'));
     }
 }
