@@ -317,7 +317,10 @@ class SharepointAdapter implements FilesystemAdapter
         $listItem = $file->getListItemAllFields();
         $this->client->load($listItem, ['EncodedAbsUrl']);
         $this->client->executeQuery();
-        return $listItem->getProperty('EncodedAbsUrl');
+
+        // re-encode the url to fix encoding for ë like characters.
+        $parsed = parse_url(rawurldecode($listItem->getProperty('EncodedAbsUrl')));
+        return sprintf('%s://%s/%s', $parsed['scheme'], $parsed['host'], rawurlencode(substr($parsed['path'], 1)));
     }
 
     protected function getDirectoryContents(string $directory, bool $deep)
