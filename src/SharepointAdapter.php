@@ -2,6 +2,7 @@
 
 namespace BitsnBolts\Flysystem\Sharepoint;
 
+use BitsnBolts\Flysystem\Sharepoint\Enums\AuthType;
 use Exception;
 use League\Flysystem\DirectoryAttributes;
 use League\Flysystem\FileAttributes;
@@ -19,6 +20,7 @@ use Office365\SharePoint\ClientContext;
 use Office365\Runtime\Http\RequestOptions;
 use Office365\SharePoint\ListTemplateType;
 use Office365\Runtime\Auth\UserCredentials;
+use Office365\Runtime\Auth\ClientCredential;
 use Office365\SharePoint\FileCreationInformation;
 use Office365\SharePoint\ListCreationInformation;
 use Office365\Runtime\Http\RequestException;
@@ -28,7 +30,7 @@ class SharepointAdapter implements FilesystemAdapter
 {
     protected ClientContext $client;
 
-    protected UserCredentials $auth;
+    protected ClientCredential|UserCredentials $auth;
 
     protected array $settings;
 
@@ -575,7 +577,25 @@ class SharepointAdapter implements FilesystemAdapter
 
     protected function authorize()
     {
+        if (! array_key_exists('auth_type', $this->settings)) {
+            $this->settings['auth_type'] = AuthType::User_Credentials;
+        }
+
+        match($this->settings['auth_type'])
+        {
+            AuthType::User_Credentials => $this->authorizeUser(),
+            AuthType::Client_Credentials => $this->authorizeClient(),
+        };
+    }
+
+    public function authorizeUser()
+    {
         $this->auth = new UserCredentials($this->settings['username'], $this->settings['password']);
+    }
+
+    public function authorizeClient()
+    {
+        $this->auth = new ClientCredential($this->settings['username'], $this->settings['password']);
     }
 
     private function getContributorRole()
