@@ -4,26 +4,26 @@ namespace BitsnBolts\Flysystem\Sharepoint;
 
 use BitsnBolts\Flysystem\Sharepoint\Enums\AuthType;
 use Exception;
+use League\Flysystem\Config;
 use League\Flysystem\DirectoryAttributes;
 use League\Flysystem\FileAttributes;
 use League\Flysystem\FilesystemAdapter;
 use League\Flysystem\PathPrefixer;
-use League\Flysystem\Config;
 use League\Flysystem\StorageAttributes;
 use League\Flysystem\UnableToReadFile;
 use League\Flysystem\UnableToRetrieveMetadata;
 use League\Flysystem\UnableToSetVisibility;
-use Office365\SharePoint\File;
-use Office365\SharePoint\Folder;
-use Office365\Runtime\Http\HttpMethod;
-use Office365\SharePoint\ClientContext;
-use Office365\Runtime\Http\RequestOptions;
-use Office365\SharePoint\ListTemplateType;
-use Office365\Runtime\Auth\UserCredentials;
 use Office365\Runtime\Auth\ClientCredential;
-use Office365\SharePoint\FileCreationInformation;
-use Office365\SharePoint\ListCreationInformation;
+use Office365\Runtime\Auth\UserCredentials;
+use Office365\Runtime\Http\HttpMethod;
 use Office365\Runtime\Http\RequestException;
+use Office365\Runtime\Http\RequestOptions;
+use Office365\SharePoint\ClientContext;
+use Office365\SharePoint\File;
+use Office365\SharePoint\FileCreationInformation;
+use Office365\SharePoint\Folder;
+use Office365\SharePoint\ListCreationInformation;
+use Office365\SharePoint\ListTemplateType;
 use Office365\SharePoint\SPResourcePath;
 
 class SharepointAdapter implements FilesystemAdapter
@@ -37,18 +37,20 @@ class SharepointAdapter implements FilesystemAdapter
     private PathPrefixer $prefixer;
 
     protected array $fileCache = [];
+
     protected array $listCache = [];
+
     protected array $folderCache = [];
 
     /**
      * @var string[]
      */
     private const META_OPTIONS = [
-            'CacheControl',
-            'ContentType',
-            'Metadata',
-            'ContentLanguage',
-            'ContentEncoding',
+        'CacheControl',
+        'ContentType',
+        'Metadata',
+        'ContentLanguage',
+        'ContentEncoding',
     ];
 
     public function __construct(array $settings, string $prefix = '')
@@ -84,6 +86,7 @@ class SharepointAdapter implements FilesystemAdapter
         } catch (Exception $e) {
             return false;
         }
+
         return true;
     }
 
@@ -108,7 +111,9 @@ class SharepointAdapter implements FilesystemAdapter
             $this->client,
             $file->getProperty('ServerRelativeUrl')
         );
+
         return $fileContent;
+
         return $response;
     }
 
@@ -121,6 +126,7 @@ class SharepointAdapter implements FilesystemAdapter
         $file = $this->getFileByPath($path);
         $fileName = implode(DIRECTORY_SEPARATOR, [sys_get_temp_dir(), $file->getName()]);
         $fh = fopen($fileName, 'w+');
+
         return $file->download($fh);
     }
 
@@ -260,7 +266,7 @@ class SharepointAdapter implements FilesystemAdapter
         if ($deep) {
             foreach ($folders as $folder) {
                 try {
-                    $listing = $this->showList($location . $folder->getName());
+                    $listing = $this->showList($location.$folder->getName());
                 } catch (RequestException $e) {
                     $message = json_decode($e->getMessage());
                     if (strpos($message->error->code, 'System.IO.DirectoryNotFoundException')) {
@@ -273,7 +279,6 @@ class SharepointAdapter implements FilesystemAdapter
             }
         }
     }
-
 
     public function move(string $source, string $destination, Config $config): void
     {
@@ -288,9 +293,9 @@ class SharepointAdapter implements FilesystemAdapter
         $newpath = $this->prefixer->prefixPath($destination);
 
         // @todo.
-//        $file = $this->getFileByPath($path);
-//        $file->moveTo($newpath);
-//        $this->client->executeQuery();
+        //        $file = $this->getFileByPath($path);
+        //        $file->moveTo($newpath);
+        //        $this->client->executeQuery();
     }
 
     /**
@@ -299,17 +304,17 @@ class SharepointAdapter implements FilesystemAdapter
      *
      * @see https://github.com/illuminate/filesystem/blob/master/FilesystemAdapter.php
      *
-     * @param string $path
-     * The path of the file
-     *
+     * @param  string  $path
+     *                        The path of the file
      * @return string The server relative url for this file
+     *
      * @throws UnableToReadFile
      */
     public function getUrl($path)
     {
         $path = $this->prefixer->prefixPath($path);
         $file = $this->getFileByPath($path);
-        if (!$file) {
+        if (! $file) {
             throw UnableToReadFile::fromLocation($path);
         }
         if ($file->getLinkingUri()) {
@@ -322,6 +327,7 @@ class SharepointAdapter implements FilesystemAdapter
 
         // re-encode the url to fix encoding for ë like characters.
         $parsed = parse_url(rawurldecode($listItem->getProperty('EncodedAbsUrl')));
+
         return sprintf('%s://%s/%s', $parsed['scheme'], $parsed['host'], rawurlencode(substr($parsed['path'], 1)));
     }
 
@@ -363,6 +369,7 @@ class SharepointAdapter implements FilesystemAdapter
                     return $carry;
                 }
                 $carry = array_merge($carry, $dirContents);
+
                 return $carry;
             }, []);
         }
@@ -399,9 +406,8 @@ class SharepointAdapter implements FilesystemAdapter
     /**
      * Normalize the object result array.
      *
-     * @param array  $response
-     * @param string $path
-     *
+     * @param  array  $response
+     * @param  string  $path
      * @return array
      */
     protected function normalizeFileResponse(File $item): FileAttributes
@@ -410,6 +416,7 @@ class SharepointAdapter implements FilesystemAdapter
         $created = date_create($item->getTimeCreated())->format('U');
         $path = str_replace(parse_url($this->client->getBaseUrl())['path'], '', $item->getServerRelativeUrl());
         $path = $this->prefixer->stripDirectoryPrefix($path);
+
         return new FileAttributes(
             $path,
             $item->getLength(),
@@ -418,8 +425,8 @@ class SharepointAdapter implements FilesystemAdapter
             '',
             [
                 'linkingUrl' => $item->getLinkingUrl(),
-                'created'  => (int) $created,
-                'type'       => 'file'
+                'created' => (int) $created,
+                'type' => 'file',
             ]
         );
     }
@@ -427,8 +434,7 @@ class SharepointAdapter implements FilesystemAdapter
     /**
      * Normalize the object result array.
      *
-     * @param array  $response
-     *
+     * @param  array  $response
      * @return array
      */
     protected function normalizeFolderResponse(Folder $item): DirectoryAttributes
@@ -448,11 +454,11 @@ class SharepointAdapter implements FilesystemAdapter
             null,
             (int) $modified,
             [
-                'created'  => (int) $created,
-                'dirname'    => $path,
-                'mimetype'   => '',
-                'size'       => 0,
-                'type'       => 'dir',
+                'created' => (int) $created,
+                'dirname' => $path,
+                'mimetype' => '',
+                'size' => 0,
+                'type' => 'dir',
             ]
         );
     }
@@ -460,19 +466,18 @@ class SharepointAdapter implements FilesystemAdapter
     /**
      * Builds the normalized output array.
      *
-     * @param string $path
-     * @param int    $timestamp
-     * @param mixed  $content
-     *
+     * @param  string  $path
+     * @param  int  $timestamp
+     * @param  mixed  $content
      * @return array
      */
     protected function normalize($path, $timestamp, $content = null)
     {
         $data = [
-            'path'      => $path,
-            'timestamp' => (int)$timestamp,
-            'dirname'   => $path,
-            'type'      => 'file',
+            'path' => $path,
+            'timestamp' => (int) $timestamp,
+            'dirname' => $path,
+            'type' => 'file',
         ];
 
         if (is_string($content)) {
@@ -485,9 +490,7 @@ class SharepointAdapter implements FilesystemAdapter
     /**
      * Builds the normalized output array from a Blob object.
      *
-     * @param string         $path
-     * @param BlobProperties $properties
-     *
+     * @param  string  $path
      * @return array
      */
     protected function normalizeBlobProperties(
@@ -497,26 +500,25 @@ class SharepointAdapter implements FilesystemAdapter
         if (substr($path, -1) === '/') {
             return [
                 'type' => 'dir',
-                'path' => $this->prefixer->stripPrefix(rtrim($path, '/'))
+                'path' => $this->prefixer->stripPrefix(rtrim($path, '/')),
             ];
         }
 
         $path = $this->prefixer->stripPrefix($path);
 
         return [
-            'path'      => $path,
-            'timestamp' => (int)$properties->getLastModified()->format('U'),
-            'dirname'   => $path,
-            'mimetype'  => $properties->getContentType(),
-            'size'      => $properties->getContentLength(),
-            'type'      => 'file',
+            'path' => $path,
+            'timestamp' => (int) $properties->getLastModified()->format('U'),
+            'dirname' => $path,
+            'mimetype' => $properties->getContentType(),
+            'size' => $properties->getContentLength(),
+            'type' => 'file',
         ];
     }
 
     /**
      * Builds the normalized output array from a BlobPrefix object.
      *
-     * @param BlobPrefix $blobPrefix
      *
      * @return array
      */
@@ -527,15 +529,14 @@ class SharepointAdapter implements FilesystemAdapter
             'path' => $this->prefixer->stripPrefix(rtrim(
                 $blobPrefix->getName(),
                 '/'
-            ))
+            )),
         ];
     }
 
     /**
      * Retrieves content streamed by Sharepoint into a string.
      *
-     * @param resource $resource
-     *
+     * @param  resource  $resource
      * @return string
      */
     protected function streamContentsToString($resource)
@@ -546,10 +547,9 @@ class SharepointAdapter implements FilesystemAdapter
     /**
      * Upload a file.
      *
-     * @param string          $path     Path
-     * @param string|resource $contents Either a string or a stream.
-     * @param Config          $config   Config
-     *
+     * @param  string  $path  Path
+     * @param  string|resource  $contents  Either a string or a stream.
+     * @param  Config  $config  Config
      * @return array
      */
     protected function upload($path, $contents, Config $config)
@@ -567,8 +567,6 @@ class SharepointAdapter implements FilesystemAdapter
 
     /**
      * Retrieve options from a Config instance.
-     *
-     * @param Config $config
      */
     protected function getOptionsFromConfig(Config $config)
     {
@@ -581,10 +579,10 @@ class SharepointAdapter implements FilesystemAdapter
             $this->settings['auth_type'] = AuthType::User_Credentials;
         }
 
-        match($this->settings['auth_type'])
-        {
+        match ($this->settings['auth_type']) {
             AuthType::User_Credentials => $this->authorizeUser(),
             AuthType::Client_Credentials => $this->authorizeClient(),
+            default => null,
         };
     }
 
@@ -623,6 +621,7 @@ class SharepointAdapter implements FilesystemAdapter
             ->getFiles()
             ->get()
             ->executeQuery();
+
         return $items->getData();
     }
 
@@ -641,6 +640,7 @@ class SharepointAdapter implements FilesystemAdapter
             ->getFolders()
             ->get()
             ->executeQuery();
+
         return $items->getData();
     }
 
@@ -652,9 +652,9 @@ class SharepointAdapter implements FilesystemAdapter
             return $this->listCache[$listTitle];
         }
         $lists = $this->client->getWeb()->getLists()->filter('Title eq \''
-                                                             . $listTitle
-                                                             . '\'')
-                              ->top(1);
+                                                             .$listTitle
+                                                             .'\'')
+            ->top(1);
         $this->client->load($lists);
         $this->client->executeQuery();
         if ($lists->getCount() === 0) {
@@ -663,6 +663,7 @@ class SharepointAdapter implements FilesystemAdapter
 
         $list = $lists->getItem(0);
         $this->listCache[$listTitle] = $list;
+
         return $list;
     }
 
@@ -677,11 +678,12 @@ class SharepointAdapter implements FilesystemAdapter
 
         // If the last part cotains a dot, its a file! :)
         // We dont need files here, so pop it.
-        if (!$this->isFolder(end($parts))) {
+        if (! $this->isFolder(end($parts))) {
             array_pop($parts);
         }
 
         $list = array_shift($parts);
+
         return implode('/', $parts);
     }
 
@@ -705,15 +707,14 @@ class SharepointAdapter implements FilesystemAdapter
     }
 
     /**
-     * @param $path
-     *
      * @return mixed
+     *
      * @throws UnableToReadFile
      */
     private function getFileByPath($path, $fresh = false)
     {
         $path = str_replace("'", "''", $path);
-        if (!$fresh && array_key_exists($path, $this->fileCache)) {
+        if (! $fresh && array_key_exists($path, $this->fileCache)) {
             return $this->fileCache[$path];
         }
 
@@ -725,12 +726,14 @@ class SharepointAdapter implements FilesystemAdapter
             throw UnableToReadFile::fromLocation(str_replace("''", "'", $path));
         }
         $this->fileCache[$path] = $targetFile;
+
         return $targetFile;
     }
 
     private function toRelativePath(string $path)
     {
-        $serverRelativePath = parse_url($this->client->getBaseUrl())['path'] . '/' . $path;
+        $serverRelativePath = parse_url($this->client->getBaseUrl())['path'].'/'.$path;
+
         return new SPResourcePath($serverRelativePath);
     }
 
@@ -742,16 +745,14 @@ class SharepointAdapter implements FilesystemAdapter
         try {
             $user = $this->client->getWeb()->ensureUser($loginName)->executeQuery();
         } catch (Exception $e) {
-            die('<b>Foutmelding:</b> De gebruikersnaam ' . $loginName . ' is niet gevonden in Office 365.');
+            exit('<b>Foutmelding:</b> De gebruikersnaam '.$loginName.' is niet gevonden in Office 365.');
         }
 
         return $user;
     }
 
     /**
-     * @param $email
-     * @param $path
-     *
+     * @param  $email
      * @return string
      */
     private function buildAccessUrl($loginName, $path)
@@ -760,7 +761,7 @@ class SharepointAdapter implements FilesystemAdapter
         $user = $this->getUserByLoginName($loginName);
         $role = $this->getContributorRole();
         $url = $this->settings['url']
-               . "/_api/web/lists/getbytitle('{$listTitle}')/roleassignments/addroleassignment(principalid={$user->getId()},roledefid={$role->getId()})";
+               ."/_api/web/lists/getbytitle('{$listTitle}')/roleassignments/addroleassignment(principalid={$user->getId()},roledefid={$role->getId()})";
 
         return $url; //     $request = new \Office365\Runtime\Utilities\RequestOptions($fullUrl, null, null, HttpMethod::Post);
     }
@@ -771,7 +772,7 @@ class SharepointAdapter implements FilesystemAdapter
         $this->client->load($lists);
         $this->client->executeQuery();
         foreach ($lists->getData() as $list) {
-            print "List title: '{$list->Title}'\r\n";
+            echo "List title: '{$list->Title}'\r\n";
         }
     }
 
@@ -795,6 +796,7 @@ class SharepointAdapter implements FilesystemAdapter
         $connector = $list->getContext();
         $list->breakRoleInheritance(true);
         $connector->executeQuery();
+
         return $list;
     }
 
@@ -819,9 +821,6 @@ class SharepointAdapter implements FilesystemAdapter
     }
 
     /**
-     * @param $list
-     * @param $folderName
-     *
      * @return mixed
      */
     private function createFolderInList($list, $folderName)
@@ -829,13 +828,11 @@ class SharepointAdapter implements FilesystemAdapter
         $parentFolder = $list->getRootFolder();
         $childFolder = $parentFolder->getFolders()->add($folderName);
         $this->client->executeQuery();
+
         return $childFolder;
     }
 
     /**
-     * @param $path
-     * @param $list
-     *
      * @return \Office365\SharePoint\Folder
      */
     private function getFolderForPath($path, $list, $createIfMissing = true, $fresh = false)
@@ -843,16 +840,16 @@ class SharepointAdapter implements FilesystemAdapter
         $folderName = $this->getFolderTitleForPath($path);
 
         $serverRelativeUrl = $list->getProperty('ParentWebUrl')
-                               . '/'
-                               . $list->getProperty('Title')
-                               . '/'
-                               . $folderName;
-        if (!$fresh && array_key_exists($serverRelativeUrl, $this->folderCache)) {
+                               .'/'
+                               .$list->getProperty('Title')
+                               .'/'
+                               .$folderName;
+        if (! $fresh && array_key_exists($serverRelativeUrl, $this->folderCache)) {
             return $this->folderCache[$serverRelativeUrl];
         }
 
         $folder = $this->client->getWeb()
-                               ->getFolderByServerRelativeUrl($serverRelativeUrl);
+            ->getFolderByServerRelativeUrl($serverRelativeUrl);
 
         $this->client->load($folder);
         try {
@@ -866,25 +863,21 @@ class SharepointAdapter implements FilesystemAdapter
         }
 
         $this->folderCache[$serverRelativeUrl] = $folder;
+
         return $folder;
     }
 
     /**
-     * @param $path
-     * @param $content
-     * @param $folder
-     * @param $connector
-     *
      * @return mixed
      */
     private function uploadFileToList($path, $content, $folder, $connector)
     {
-        $fileCreationInformation = new FileCreationInformation();
+        $fileCreationInformation = new FileCreationInformation;
         $fileCreationInformation->Content = $content;
         $fileCreationInformation->Url = $this->getFilenameForPath($path);
 
         $uploadFile = $folder->getFiles()
-                             ->add($fileCreationInformation);
+            ->add($fileCreationInformation);
 
         $connector->executeQuery();
 
@@ -893,6 +886,16 @@ class SharepointAdapter implements FilesystemAdapter
 
     private function setupClient()
     {
-        $this->client = (new ClientContext($this->settings['url']))->withCredentials($this->auth);
+        $this->client = match ($this->settings['auth_type']) {
+            AuthType::Client_Certificate => (new ClientContext($this->settings['url']))->withClientCertificate(
+                $this->settings['tenant'],
+                $this->settings['client_id'],
+                $this->settings['private_key'],
+                $this->settings['thumbprint'],
+                $this->settings['scopes'] ?? null,
+            ),
+            AuthType::User_Credentials,
+            AuthType::Client_Credentials => (new ClientContext($this->settings['url']))->withCredentials($this->auth),
+        };
     }
 }
