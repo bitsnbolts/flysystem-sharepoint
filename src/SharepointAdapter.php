@@ -403,6 +403,15 @@ class SharepointAdapter implements FilesystemAdapter
         $this->client->executeQueryDirect($request);
     }
 
+    public function revokeUserAccessToPath($loginName, $path)
+    {
+        $list = $this->getList($path);
+        $user = $this->getUserByLoginName($loginName);
+        $role = $this->getContributorRole();
+        $list->getRoleAssignments()->removeRoleAssignment($user->getId(), $role->getId());
+        $this->client->executeQuery();
+    }
+
     /**
      * Normalize the object result array.
      *
