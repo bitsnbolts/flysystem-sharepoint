@@ -163,11 +163,12 @@ class SharepointAdapter implements FilesystemAdapter
      */
     public function createDirectory(string $path, Config $config): void
     {
-        $path = $this->prefixer->prefixDirectoryPath($path);
-        if (dirname($path) === '.') {
+        $path = $this->normalizeDirectoryPath($path);
+        $directories = $this->getPathSegments($path);
+
+        if (count($directories) === 1) {
             $this->createList($path);
         } else {
-            $directories = explode('/', $path);
             $list = $this->getList(array_shift($directories));
             $this->createFolderInList($list, implode('/', $directories));
         }
@@ -679,12 +680,12 @@ class SharepointAdapter implements FilesystemAdapter
 
     private function getListTitleForPath($path)
     {
-        return current(explode('/', $path));
+        return $this->getPathSegments($path)[0] ?? '';
     }
 
     private function getFolderTitleForPath($path)
     {
-        $parts = explode('/', $path);
+        $parts = $this->getPathSegments($path);
 
         // If the last part cotains a dot, its a file! :)
         // We dont need files here, so pop it.
@@ -706,9 +707,28 @@ class SharepointAdapter implements FilesystemAdapter
 
     private function getListTitleForGroupPath($path)
     {
-        $parts = explode('/', $path);
+        $parts = $this->getPathSegments($path);
 
-        return $parts[0];
+        return $parts[0] ?? '';
+    }
+
+    private function normalizeDirectoryPath(string $path): string
+    {
+        return $this->prefixer->prefixPath(rtrim($path, '\\/'));
+    }
+
+    /**
+     * @return string[]
+     */
+    private function getPathSegments(string $path): array
+    {
+        $path = trim($path, '\\/');
+
+        if ($path === '') {
+            return [];
+        }
+
+        return array_values(array_filter(explode('/', $path), fn ($segment) => $segment !== ''));
     }
 
     private function getFilenameForPath($path)
