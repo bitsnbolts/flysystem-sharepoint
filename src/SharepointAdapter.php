@@ -3,6 +3,7 @@
 namespace BitsnBolts\Flysystem\Sharepoint;
 
 use BitsnBolts\Flysystem\Sharepoint\Enums\AuthType;
+use BitsnBolts\Flysystem\Sharepoint\Exceptions\UserNotFound;
 use Exception;
 use League\Flysystem\Config;
 use League\Flysystem\DirectoryAttributes;
@@ -754,7 +755,7 @@ class SharepointAdapter implements FilesystemAdapter
         try {
             $user = $this->client->getWeb()->ensureUser($loginName)->executeQuery();
         } catch (Exception $e) {
-            exit('<b>Foutmelding:</b> De gebruikersnaam '.$loginName.' is niet gevonden in Office 365.');
+            throw UserNotFound::withLoginName($loginName, $e);
         }
 
         return $user;
