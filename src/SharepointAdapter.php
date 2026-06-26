@@ -43,6 +43,12 @@ class SharepointAdapter implements FilesystemAdapter
 
     protected array $folderCache = [];
 
+    protected array $userCache = [];
+
+    protected array $brokenInheritanceCache = [];
+
+    protected mixed $contributorRole = null;
+
     /**
      * @var string[]
      */
@@ -397,8 +403,7 @@ class SharepointAdapter implements FilesystemAdapter
 
     public function grantUserAccessToPath($loginName, $path)
     {
-        // @todo: only do this when user doesnt have the permissions yet?
-        $this->breakRoleInheritance($path);
+        $this->ensureUniqueRoleAssignments($path);
         $url = $this->buildAccessUrl($loginName, $path);
         $request = new RequestOptions($url, null, null, HttpMethod::Post);
         $this->client->ensureFormDigest($request);
@@ -408,8 +413,8 @@ class SharepointAdapter implements FilesystemAdapter
     public function revokeUserAccessToPath($loginName, $path)
     {
         $list = $this->getList($path);
-        $user = $this->getUserByLoginName($loginName);
-        $role = $this->getContributorRole();
+        $user = $this->getCachedUserByLoginName($loginName);
+        $role = $this->getCachedContributorRole();
         $list->getRoleAssignments()->removeRoleAssignment($user->getId(), $role->getId());
         $this->client->executeQuery();
     }
@@ -607,8 +612,18 @@ class SharepointAdapter implements FilesystemAdapter
         $this->auth = new ClientCredential($this->settings['username'], $this->settings['password']);
     }
 
-    private function getContributorRole()
+    protected function getCachedContributorRole()
     {
+        if ($this->contributorRole !== null) {
+            return $this->contributorRole;
+        }
+
+        return $this->contributorRole = $this->resolveContributorRole();
+    }
+
+    protected function resolveContributorRole()
+    {
+
         $roleDefinitions = $this->client->getWeb()->getRoleDefinitions();
         $roleDefinitions->filter('RoleTypeKind eq 3');
         $this->client->load($roleDefinitions);
@@ -770,8 +785,18 @@ class SharepointAdapter implements FilesystemAdapter
     /**
      * @return \Office365\SharePoint\User
      */
-    private function getUserByLoginName($loginName)
+    protected function getCachedUserByLoginName($loginName)
     {
+        if (array_key_exists($loginName, $this->userCache)) {
+            return $this->userCache[$loginName];
+        }
+
+        return $this->userCache[$loginName] = $this->resolveUserByLoginName($loginName);
+    }
+
+    protected function resolveUserByLoginName($loginName)
+    {
+
         try {
             $user = $this->client->getWeb()->ensureUser($loginName)->executeQuery();
         } catch (Exception $e) {
@@ -785,11 +810,11 @@ class SharepointAdapter implements FilesystemAdapter
      * @param  $email
      * @return string
      */
-    private function buildAccessUrl($loginName, $path)
+    protected function buildAccessUrl($loginName, $path)
     {
         $listTitle = $this->getListTitleForGroupPath($path);
-        $user = $this->getUserByLoginName($loginName);
-        $role = $this->getContributorRole();
+        $user = $this->getCachedUserByLoginName($loginName);
+        $role = $this->getCachedContributorRole();
         $url = $this->settings['url']
                ."/_api/web/lists/getbytitle('{$listTitle}')/roleassignments/addroleassignment(principalid={$user->getId()},roledefid={$role->getId()})";
 
@@ -820,7 +845,7 @@ class SharepointAdapter implements FilesystemAdapter
         return $list;
     }
 
-    private function breakRoleInheritance($path)
+    protected function breakRoleInheritance($path)
     {
         $list = $this->getList($path);
         $connector = $list->getContext();
@@ -828,6 +853,17 @@ class SharepointAdapter implements FilesystemAdapter
         $connector->executeQuery();
 
         return $list;
+    }
+
+    protected function ensureUniqueRoleAssignments($path)
+    {
+        $listTitle = $this->getListTitleForPath($path);
+
+        if (array_key_exists($listTitle, $this->brokenInheritanceCache)) {
+            return $this->brokenInheritanceCache[$listTitle];
+        }
+
+        return $this->brokenInheritanceCache[$listTitle] = $this->breakRoleInheritance($path);
     }
 
     private function addFileToList($path, $content)
@@ -914,7 +950,7 @@ class SharepointAdapter implements FilesystemAdapter
         return $uploadFile;
     }
 
-    private function setupClient()
+    protected function setupClient()
     {
         $this->client = match ($this->settings['auth_type']) {
             AuthType::Client_Certificate => (new ClientContext($this->settings['url']))->withClientCertificate(
